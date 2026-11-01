@@ -8,6 +8,7 @@ import { Field, Stat, useAction, useCelebrate, useToast } from '../components/ui
 import { CurveChart, PriceChart } from '../components/Charts';
 import type { AssetView } from './Explore';
 import { Nut, NutImg } from '../components/Nut';
+import { NostrIcon } from '../components/NostrIcon';
 
 type Full = AssetView & { fee_split: { pubkey: string; bps: number }[]; manifest_json: string; manifest_event: any; free_supply: string };
 
@@ -153,6 +154,7 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
             <p className="t-desc">{a.description || <span className="dim">No description.</span>}</p>
             <div className="row" style={{ gap: 8 }}>
               <button className="chip npub" onClick={() => copy(npub, 'Creator npub copied')} title={npub}>creator {shortKey(a.creator_pubkey)} ⧉</button>
+              <a className="chip" href={`https://primal.net/p/${npub}`} target="_blank" rel="noopener noreferrer" title="Open the creator's profile on Primal"><NostrIcon size={14} /> See on Nostr ↗</a>
               <span className={`tag ${stTone}`}>{st}</span>
               <span className="tag">{a.announcement_state.replace('ANNOUNCEMENT_', '').toLowerCase()}</span>
               <button className="chip" onClick={() => copy(window.location.href, 'Link copied')}>Copy link ⧉</button>

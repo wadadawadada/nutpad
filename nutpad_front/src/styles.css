@@ -680,3 +680,6 @@ label:has(> input[type='checkbox']) input { margin-top: 3px; flex: none; min-hei
 
 .tag { white-space: normal; max-width: 100%; }
 header.top .tag { white-space: nowrap; }
+
+a.chip { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+a.chip:hover { background: var(--proof); color: #0d0b26; }
