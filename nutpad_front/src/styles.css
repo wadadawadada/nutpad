@@ -518,3 +518,165 @@ header.top a.tag.npub { font-family: var(--pixel); font-weight: 700; font-size: 
 .corner-gh { position: absolute; top: 10px; right: 14px; z-index: 40; }
 .corner-gh .icon-link { color: #fff; background: rgba(13, 11, 38, .6); border: 2px solid rgba(255, 255, 255, .35); padding: 5px; }
 .corner-gh .icon-link:hover { color: var(--lime); border-color: var(--lime); background: rgba(13, 11, 38, .85); }
+
+/* ═════════════ MOBILE ═════════════ */
+html { -webkit-text-size-adjust: 100%; }
+body { overflow-x: hidden; }
+.grid > *, .col > *, .row > * { min-width: 0; }
+img, svg, canvas { max-width: 100%; }
+
+@media (max-width: 760px) {
+  body { font-size: 15px; padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+  .wrap { padding: 0 12px 28px; }
+  h1 { font-size: 1.1rem; } h2 { font-size: 0.95rem; } h3 { font-size: 0.78rem; }
+  .px { padding: 14px; margin: 3px; }
+  .grid { gap: 16px; }
+  .grid.two { grid-template-columns: minmax(0, 1fr); }
+  .grid.cards { grid-template-columns: minmax(0, 1fr); }
+  .section-title { margin: 26px 0 12px; flex-wrap: wrap; }
+  .section-title::after { display: none; }
+
+  /* touch targets, no iOS zoom on focus */
+  button, .btn { min-height: 44px; padding: 0.7rem 1rem; font-size: 0.74rem; }
+  button.sm, .btn.sm { min-height: 38px; }
+  input, textarea, select { font-size: 16px; min-height: 44px; }
+  .pill { min-height: 38px; }
+
+  /* notice + banner */
+  .notice { font-size: 0.5rem; padding: 6px 10px; letter-spacing: 0.04em; line-height: 1.5; }
+  .banner { height: 76px; }
+  .banner-plaque { padding: 6px 14px; max-width: calc(100vw - 32px); }
+  .banner-title { font-size: 1.5rem; }
+  .banner-tag { font-size: 0.44rem; letter-spacing: 0.1em; margin-top: 5px; white-space: normal; }
+
+  /* top bar: brand actions only; tabs move to the bottom */
+  header.top .bar-in { flex-wrap: nowrap; justify-content: flex-end; gap: 8px; padding: 6px 12px; min-height: 46px; }
+  header.top .grow { display: none; }
+  header.top a.tag.npub { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  header.top nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+    background: rgba(13, 11, 38, .98); border-top: 4px solid var(--line); padding: 0 0 env(safe-area-inset-bottom);
+  }
+  header.top nav a { flex-direction: column; justify-content: center; gap: 5px; padding: 9px 2px 8px; font-size: 0.5rem; letter-spacing: 0.04em; min-height: 56px; border: 0; border-top: 4px solid transparent; margin-top: -4px; background: transparent; text-align: center; }
+  header.top nav a.active { color: var(--lime); background: var(--surface2); border-top-color: var(--lime); }
+  header.top nav a:hover:not(.active) { background: transparent; }
+  header.top nav a .pxi { width: 22px; height: 22px; }
+  .toasts { left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); max-width: none; }
+
+  /* hero */
+  .hero { margin: 14px 2px 6px; }
+  .hero-grid { grid-template-columns: minmax(0, 1fr); padding: 22px 16px 26px; gap: 6px; }
+  .hero h1 { font-size: clamp(1.15rem, 6.4vw, 1.7rem); text-shadow: 3px 3px 0 #0d0b26, 4px 4px 0 var(--pink); }
+  .hero-copy p { font-size: 0.92rem; margin-bottom: 16px; }
+  .hero .row { gap: 10px; }
+  .hero-cta { flex: 1 1 140px; padding: 0.8rem 0.9rem; font-size: 0.72rem; }
+  .hero-nut { min-height: 150px; order: 2; }
+  .hero-nut-spin canvas { width: 130px; }
+
+  .ticker { margin: 6px 2px 0; }
+  .steps { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .step { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 4px 12px; text-align: left; align-items: center; padding: 16px 14px 14px; }
+  .step .nut-wrap { grid-row: span 2; height: auto; }
+  .step h3 { margin: 0; align-self: end; } .step p { align-self: start; }
+  .row.sortbar, .section-title .pills { gap: 6px; }
+
+  /* token cards */
+  .token-card .img { aspect-ratio: 16 / 10; }
+
+  /* token page: hero, numbers, trade, then charts and tabs */
+  .token-page { display: grid; }
+  .token-page > .col:first-child { display: contents; }
+  .token-page > .col:first-child > :nth-child(1) { order: 1; }
+  .token-page > .col:first-child > :nth-child(2) { order: 2; }
+  .token-page > .col:first-child > :nth-child(3) { order: 3; }
+  .token-page > .sticky-col { order: 4; position: static; }
+  .token-page > .col:first-child > :nth-child(4) { order: 5; }
+  .token-page > .col:first-child > :nth-child(5) { order: 6; }
+  .t-hero2 { flex-direction: column; align-items: flex-start; padding: 16px; gap: 14px; }
+  .t-avatar { width: 96px; height: 96px; }
+  .t-desc { font-size: 0.95rem; margin: 8px 0 12px; }
+  .statgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .tile-stat { padding: 10px 12px; } .tile-stat b { font-size: 0.85rem; }
+  .tile-stat.big { grid-column: span 2; } .tile-stat.big b { font-size: 1.05rem; }
+  .trade { padding: 14px; }
+  .receipt-main b { font-size: 0.9rem; }
+  .feed { max-height: 320px; }
+  .feed-row { flex-wrap: wrap; gap: 4px 8px; font-size: 0.82rem; }
+  .feed-row .mono { display: none; }
+  .chart { max-height: 240px; }
+
+  /* wallet */
+  .wallet-hero { padding: 16px; }
+  .wallet-hero-main { gap: 12px; }
+  .wallet-nut { display: none; }
+  .wallet-bal { font-size: 1.6rem; }
+  .wallet-quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+  .wallet-quick button { width: 100%; }
+  .wallet-warn { font-size: 0.9rem; }
+  .holding { gap: 10px; } .holding-img { width: 44px; height: 44px; }
+  .holding .btn.sm, .holding button.sm { flex: 1 1 auto; }
+  .wallet-tabs { overflow-x: auto; }
+  .wallet-tabs button { flex: 0 0 auto; padding-left: 14px; padding-right: 14px; }
+  #wallet-actions { scroll-margin-top: 60px; }
+
+  /* create */
+  .cform { padding: 14px; }
+  .cform-top { grid-template-columns: minmax(0, 1fr); }
+  .cform-img .drop { width: 100%; min-height: 120px; }
+  .two-col { grid-template-columns: minmax(0, 1fr) 110px; }
+  .cform .row { flex-wrap: wrap; }
+
+  /* modals */
+  .modal-bg { padding: 0; align-items: end; }
+  .modal, .login { width: 100%; max-height: 92vh; border-bottom-width: 0; margin: 0; }
+  .login { padding: 16px; }
+  .login-head { padding-right: 36px; }
+  .login-tabs .pill { flex: 1 1 calc(50% - 8px); justify-content: center; }
+  .qr-frame img, .qr-skel { width: min(220px, 64vw); height: min(220px, 64vw); }
+  .celebrate-card { padding: 16px 16px 20px; }
+  .celebrate-card .stamp { font-size: 1.1rem; }
+
+  /* tables and long text */
+  table { font-size: 0.85rem; }
+  .scroll { -webkit-overflow-scrolling: touch; }
+  .mono { word-break: break-all; }
+  .footer { margin-top: 28px; }
+}
+
+@media (max-width: 380px) {
+  .banner-title { font-size: 1.3rem; }
+  header.top nav a { font-size: 0.44rem; }
+  .hero-cta { flex-basis: 100%; }
+  .wallet-quick { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  /* wide tables scroll inside their panel instead of stretching the page */
+  .px table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+  .px table td, .px table th { white-space: nowrap; }
+}
+
+@media (max-width: 760px) {
+  /* on a phone the signer app is usually on the same device: "Open in app" first, QR after */
+  .login-qr { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+  .login-steps { order: -1; }
+  .qr-frame { align-self: center; }
+}
+
+.tag { white-space: nowrap; }
+label:has(> input[type='checkbox']) { display: flex; gap: 10px; align-items: flex-start; text-transform: none; letter-spacing: 0; font-family: var(--font); font-size: 0.92rem; color: var(--ink); cursor: pointer; }
+label:has(> input[type='checkbox']) input { margin-top: 3px; flex: none; min-height: 0; width: 18px; height: 18px; }
+
+@media (max-width: 760px) {
+  /* compact one-line top bar: balance left, account on the right */
+  header.top .bar-in { justify-content: space-between; gap: 6px; flex-wrap: nowrap; }
+  header.top .bar-in > .row { flex-wrap: nowrap; gap: 6px; margin-left: auto; min-width: 0; }
+  header.top .tag { font-size: 0.56rem; padding: 4px 6px; }
+  header.top a.tag.npub { max-width: 40vw; }
+  header.top .icon-btn { min-height: 36px; padding: 6px 8px; }
+  header.top .icon-link { padding: 6px; }
+  header.top .bar-in > button.sm { min-height: 38px; padding: 0.5rem 0.8rem; }
+}
+
+.tag { white-space: normal; max-width: 100%; }
+header.top .tag { white-space: nowrap; }
