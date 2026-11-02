@@ -3,6 +3,7 @@ import { NostrIcon } from './components/NostrIcon';
 import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { useAuth } from './lib/auth';
+import { useProfileName } from './lib/profile';
 import { api } from './lib/api';
 import { checkDeposits, refreshKeysets, resumePending, satKeysetId, useWallet } from './lib/wallet';
 import { errMsg, fmt, shortKey } from './lib/format';
@@ -20,6 +21,7 @@ import Audit from './pages/Audit';
 
 export default function App() {
   const auth = useAuth();
+  const profileName = useProfileName(auth.pubkey);
   const w = useWallet();
   const [login, setLogin] = useState(false);
   const [info, setInfo] = useState<any>(null);
@@ -56,7 +58,7 @@ export default function App() {
           <NavLink to="/wallet" className="tag yellow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><PixelIcon name="coin" size={14} />{sat ? fmt(w.balance(sat)) : '…'} sats</NavLink>
           {auth.pubkey ? (
             <div className="row" style={{ gap: 8 }}>
-              <a className="tag cyan npub" href={`https://primal.net/p/${auth.npub}`} target="_blank" rel="noopener noreferrer" title="Open your Primal profile"><PixelIcon name="user" size={14} />{shortKey(auth.pubkey)}</a>
+              <a className="tag cyan npub" href={`https://primal.net/p/${auth.npub}`} target="_blank" rel="noopener noreferrer" title="Open your Primal profile"><PixelIcon name="user" size={14} />{profileName ?? shortKey(auth.pubkey)}</a>
               <button className="ghost sm icon-btn" onClick={() => auth.logout()} title="Logout" aria-label="Logout"><PixelIcon name="logout" size={18} /></button>
             </div>
           ) : (

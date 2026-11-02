@@ -2,7 +2,6 @@
 // Social apps and Nostr clients fetch the URL WITHOUT running JavaScript, so a client-rendered SPA
 // would show an empty preview. This injects the tags into index.html for /token/:id (and defaults elsewhere).
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const nf = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
 const SITE = {
   title: 'nutpad — Cashu token launchpad',
@@ -44,10 +43,9 @@ export async function withPreview(html, { origin, apiUrl, path }) {
   if (m) {
     const a = await fetchAsset(apiUrl, m[1]);
     if (a) {
-      const pct = (Number(BigInt(a.supply) * 10000n / 21000000n) / 100).toFixed(2);
       meta = {
         title: `${a.name} ($${a.ticker}) — nutpad`,
-        description: `${a.description ? a.description.slice(0, 160) + ' · ' : ''}Supply ${nf(a.supply)} / 21,000,000 (${pct}%) · ${nf(a.volume_sats)} sats volume · ${nf(a.trade_count)} trades`,
+        description: `${a.description ? a.description.slice(0, 160) + ' · ' : ''}Cashu ecash token on a fixed bonding curve · 21M supply · verifiable on nutpad.fun`,
         url: origin + path,
         image: `${apiUrl}/assets/${a.asset_id}/image`, // must be publicly reachable: deploy the API on a public URL
         big: false,

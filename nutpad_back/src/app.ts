@@ -246,6 +246,20 @@ export function createApp(mint: Mint) {
     return { trades: r.rows.map((t) => ({ ...t, price_nano: spotPriceNano(big(t.supply_after)) })), mint_pubkey: mint.nostrPk };
   }));
 
+  app.get('/assets/:id/buybacks', h(async (req) => {
+    const lim = Math.min(Number(req.query.limit ?? 100) || 100, 500);
+    const r = await db.query<any>(
+      `SELECT seq,payload FROM audit_events WHERE event_type='BUYBACK' AND payload::jsonb->>'asset_id'=$1 ORDER BY seq DESC LIMIT $2`,
+      [req.params.id, lim],
+    );
+    return {
+      buybacks: r.rows.map((e) => {
+        const p = JSON.parse(e.payload);
+        return { audit_seq: Number(e.seq), burned_units: p.delta, sats: p.gross, carry_after: p.carry_after, supply_after: p.supply_after, burned_total: p.burned_after, ts: p.ts };
+      }),
+    };
+  }));
+
   app.get('/assets/:id/vaults', h(async (req) => {
     const r = await db.query<any>(
       `SELECT vault_id,asset_id,amount,unlock_at,state,beneficiary_commitment,lock_audit_seq,lock_receipt_sig,created_at FROM vaults WHERE asset_id=$1 ORDER BY created_at DESC`,

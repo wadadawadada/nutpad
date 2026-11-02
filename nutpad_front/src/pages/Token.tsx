@@ -1,3 +1,4 @@
+import { useProfileName } from '../lib/profile';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, imageUrl } from '../lib/api';
@@ -117,26 +118,30 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
   const [a, setA] = useState<Full | null>(null);
   const [trades, setTrades] = useState<any[]>([]);
   const [vaults, setVaults] = useState<any[]>([]);
+  const [buybacks, setBuybacks] = useState<any[]>([]);
   const [audit, setAudit] = useState<any>(null);
   const [err, setErr] = useState('');
   const [chart, setChart] = useState<'price' | 'candles' | 'curve'>('price');
   const [frame, setFrame] = useState<Frame>('1T');
-  const [tab, setTab] = useState<'trades' | 'vaults' | 'info'>('trades');
+  const [tab, setTab] = useState<'trades' | 'buybacks' | 'vaults' | 'info'>('trades');
   const w = useWallet();
   void onLogin;
 
   const load = useCallback(() => {
     api('GET', `/assets/${id}`).then(setA).catch((e) => setErr(e.message));
     api('GET', `/assets/${id}/trades?limit=200`).then((r) => setTrades(r.trades)).catch(() => {});
+    api('GET', `/assets/${id}/buybacks`).then((r) => setBuybacks(r.buybacks)).catch(() => {});
     api('GET', `/assets/${id}/vaults`).then((r) => setVaults(r.vaults)).catch(() => {});
     api('GET', `/audit/assets/${id}/status`).then(setAudit).catch(() => {});
   }, [id]);
   useEffect(() => { load(); const t = setInterval(load, 4000); return () => clearInterval(t); }, [load]);
+  const creatorName = useProfileName(a?.creator_pubkey);
   const mine = useMemo(() => (a?.keyset_id ? w.balance(a.keyset_id) : 0), [a, w]);
 
   if (err) return <div className="px red" style={{ marginTop: 20 }}>{err}</div>;
   if (!a) return <div className="px" style={{ marginTop: 20 }}><div className="skel" style={{ height: 160 }} /></div>;
   const pct = Number((BigInt(a.supply) * 10000n) / 21_000_000n) / 100;
+  const burnedPct = (Number((BigInt(a.burned_supply ?? 0) * 1_000_000n) / 21_000_000n) / 10_000).toFixed(4).replace(/\.?0+$/, '') || '0';
   const st = audit?.asset_status ?? 'UNKNOWN';
   const stTone = st === 'VERIFIED' ? 'green' : st === 'STALE' || st === 'UNKNOWN' ? 'yellow' : 'red';
   const npub = nip19.npubEncode(a.creator_pubkey);
@@ -159,7 +164,7 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
             <p className="t-desc">{a.description || <span className="dim">No description</span>}</p>
             <div className="t-meta">
               <div className="seg">
-                <span className="seg-label" title={npub}><PixelIcon name="user" size={13} />{shortKey(a.creator_pubkey)}</span>
+                <span className="seg-label" title={npub}><PixelIcon name="user" size={13} />{creatorName ?? shortKey(a.creator_pubkey)}</span>
                 <button className="seg-btn" onClick={() => copy(npub, 'Creator npub copied')} title="Copy creator npub" aria-label="Copy creator npub"><PixelIcon name="copy" size={13} /></button>
                 <a className="seg-btn" href={`https://primal.net/p/${npub}`} target="_blank" rel="noopener noreferrer" title="Open the creator's profile on Primal"><NostrIcon size={14} />Nostr ↗</a>
               </div>
@@ -179,7 +184,7 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
           <Tile k="Volume" v={<>{fmt(a.volume_sats)}<small> sats</small></>} />
           <Tile k="Fees earned" v={<>{fmt(a.fees_total ?? 0)}<small> sats</small></>} sub={`creators ${fmt(a.creator_fees ?? 0)} · buyback ${fmt(a.buyback_fees ?? 0)}`} />
           <Tile k="Trades" v={fmt(a.trade_count)} />
-          <Tile k="Burned" v={fmt(a.burned_supply ?? 0)} sub="bought back with the 0.7% fee" />
+          <Tile k="Burned" v={`${burnedPct}%`} sub={`${fmt(a.burned_supply ?? 0)} of 21M · bought back with the 0.7% fee`} />
           <Tile k="Locked" v={fmt(a.locked_supply)} />
         </div>
 
@@ -224,6 +229,7 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
         <div className="px">
           <div className="pills" style={{ marginBottom: 12 }}>
             <button className={`pill ${tab === 'trades' ? 'on' : ''}`} onClick={() => setTab('trades')}>Trades <span className="count">{trades.length}</span></button>
+            <button className={`pill ${tab === 'buybacks' ? 'on' : ''}`} onClick={() => setTab('buybacks')}>Buybacks <span className="count">{buybacks.length}</span></button>
             <button className={`pill ${tab === 'vaults' ? 'on' : ''}`} onClick={() => setTab('vaults')}>Locked <span className="count">{vaults.length}</span></button>
             <button className={`pill ${tab === 'info' ? 'on' : ''}`} onClick={() => setTab('info')}>Manifest</button>
           </div>
@@ -241,6 +247,25 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
                     <span className="grow" />
                     <span className="dim">{ago(t.created_at)}</span>
                     <span className="mono dim">{t.receipt_sig.slice(0, 8)}…</span>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {tab === 'buybacks' && (
+            buybacks.length === 0 ? <div className="dim">No buybacks yet. Every trade sends 0.7% to buy this token on the curve and burn it.</div> : (
+              <div className="feed">
+                {buybacks.map((b) => (
+                  <div key={b.audit_seq} className="feed-row" title={`audit seq ${b.audit_seq}
+carry left ${b.carry_after} sats`}>
+                    <NutImg k="pista" size={32} />
+                    <span className="who yellow">burned</span>
+                    <b>{fmt(b.burned_units)}</b>
+                    <span className="dim">for {fmt(b.sats)} sats</span>
+                    <span className="grow" />
+                    <span className="dim">{ago(b.ts)}</span>
+                    <span className="mono dim">Σ {fmt(b.burned_total)}</span>
                   </div>
                 ))}
               </div>

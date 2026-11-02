@@ -461,7 +461,7 @@ a.tag.npub:hover { text-decoration: underline; color: var(--lime); }
 a.tag.npub { display: inline-flex; align-items: center; gap: 7px; }
 
 /* header address uses the same pixel font as the balance badge */
-header.top a.tag.npub { font-family: var(--pixel); font-weight: 700; font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; }
+header.top a.tag.npub { font-family: var(--pixel); font-weight: 700; font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ───── create form, compact ───── */
 .cform { gap: 12px; padding: 16px 18px; }
@@ -712,6 +712,7 @@ button:disabled::after { display: none; }
 .seg > * + * { border-left: 2px solid rgba(116, 214, 255, .35); }
 .seg-label, .seg-btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 10px; font-size: 0.78rem; line-height: 1; white-space: nowrap; }
 .seg-label { font-family: var(--mono); font-weight: 600; color: var(--proof); }
+.seg-label { max-width: 52vw; overflow: hidden; text-overflow: ellipsis; }
 .seg-btn { min-height: 0; background: transparent; color: var(--proof); border: 0; box-shadow: none; font-family: var(--pixel); font-size: 0.6rem; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; text-decoration: none; }
 .seg-btn::after { display: none; }
 .seg-btn:hover:not(:disabled) { background: var(--proof); color: #0d0b26; transform: none; box-shadow: none; filter: none; }
