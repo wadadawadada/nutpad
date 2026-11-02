@@ -1,4 +1,5 @@
 import { NostrIcon } from '../components/NostrIcon';
+import { launchPost } from '../lib/post';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -93,8 +94,7 @@ export default function Create({ onLogin }: { onLogin: () => void }) {
       setStep(post ? '2/2 Approve the Nostr post in your signer app…' : '');
       const note = !post ? undefined : await signer.signEvent({
         kind: 1, created_at: Math.floor(Date.now() / 1000),
-        tags: [['t', 'nutpad'], ['r', url]],
-        content: [`Launched $${manifest.ticker} — ${manifest.name} on nutpad`, manifest.description.slice(0, 300), url].filter(Boolean).join('\n\n'),
+        ...launchPost({ ticker: manifest.ticker, name: manifest.name, description: manifest.description, url }),
       });
       setStep('Settling launch with the mint…');
       const satKs = await satKeysetId();

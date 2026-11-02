@@ -27,7 +27,7 @@ export async function appendEvent(c: Conn, type: string, payload: Record<string,
 /** State commitment derived from the database (compare with replay.stateRoot). */
 export async function dbState(c: Conn) {
   const a = await c.query<any>(
-    `SELECT asset_id,supply,reserve_sats,locked_supply,creator_fee_accrued,creator_fee_claimed FROM assets ORDER BY asset_id`,
+    `SELECT asset_id,supply,reserve_sats,locked_supply,burned_supply,buyback_carry,creator_fee_accrued,creator_fee_claimed FROM assets ORDER BY asset_id`,
   );
   const p = await c.query<any>(`SELECT fees_sats FROM platform_ledger WHERE id=1`);
   const assets = a.rows.map((r) => ({
@@ -35,10 +35,12 @@ export async function dbState(c: Conn) {
     supply: big(r.supply),
     reserve: big(r.reserve_sats),
     locked: big(r.locked_supply),
+    burned: big(r.burned_supply),
+    carry: big(r.buyback_carry),
     fee_accrued: big(r.creator_fee_accrued),
     fee_claimed: big(r.creator_fee_claimed),
   }));
-  return { assets, platform_fees: big(p.rows[0].fees_sats) };
+  return { assets, dev_fund: big(p.rows[0].fees_sats) };
 }
 
 export const dbStateRoot = (s: Awaited<ReturnType<typeof dbState>>) => sha256Hex(canonical(s));
@@ -59,7 +61,8 @@ export async function createCheckpoint(mint: Mint): Promise<number | null> {
       supply: state.assets.reduce((x, a) => x + a.supply, 0n).toString(),
       reserve: state.assets.reduce((x, a) => x + a.reserve, 0n).toString(),
       locked: state.assets.reduce((x, a) => x + a.locked, 0n).toString(),
-      platform_fees: state.platform_fees.toString(),
+      burned: state.assets.reduce((x, a) => x + a.burned, 0n).toString(),
+      dev_fund: state.dev_fund.toString(),
     };
     const ev = finalizeEvent(
       {

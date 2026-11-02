@@ -39,6 +39,7 @@ function Stage() {
 export interface AssetView {
   asset_id: string; unit: string; name: string; ticker: string; description: string; creator_pubkey: string;
   supply: string; reserve_sats: string; locked_supply: string; price_nano: string; trade_count: string; volume_sats: string;
+  fees_total?: string; creator_fees?: string; buyback_fees?: string; burned_supply?: string;
   keyset_id: string | null; creator_initial_units: string; announcement_state: string; manifest_hash: string; created_at: string;
 }
 

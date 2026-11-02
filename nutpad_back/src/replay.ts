@@ -1,12 +1,14 @@
 // Deterministic state-transition rules for the public audit log.
 // Shared by the server (state root) and the independent verifier.
-import { C, distribute, feeOf, quoteBuyUnits, quoteSellUnits, splitFee, SUPPLY } from './curve.js';
+import { C, distribute, feeOf, maxUnitsForSats, quoteBuyUnits, quoteSellUnits, splitFee, SUPPLY } from './curve.js';
 import { canonical, sha256Hex } from './util.js';
 
 export interface AssetState {
   supply: bigint;
   reserve: bigint;
   locked: bigint;
+  burned: bigint;
+  carry: bigint;
   feeAccrued: bigint;
   feeClaimed: bigint;
   split: { pubkey: string; bps: number }[];
@@ -16,10 +18,10 @@ export interface AssetState {
 
 export interface LogState {
   assets: Map<string, AssetState>;
-  platformFees: bigint;
+  devFund: bigint;
 }
 
-export const emptyState = (): LogState => ({ assets: new Map(), platformFees: 0n });
+export const emptyState = (): LogState => ({ assets: new Map(), devFund: 0n });
 
 export interface LogEvent {
   seq: number;
@@ -49,13 +51,15 @@ export function applyEvent(s: LogState, ev: LogEvent): void {
         supply: 0n,
         reserve: 0n,
         locked: 0n,
+        burned: 0n,
+        carry: 0n,
         feeAccrued: 0n,
         feeClaimed: 0n,
         split: p.fee_split,
         tradeSeq: 0n,
         vaults: new Map(),
       });
-      s.platformFees += 1000n;
+      s.devFund += 1000n;
       return;
     }
     case 'BUY':
@@ -83,7 +87,7 @@ export function applyEvent(s: LogState, ev: LogEvent): void {
       need(gross === BigInt(p.gross) && fee === BigInt(p.fee) && fee === feeOf(gross), 'gross/fee mismatch');
       need(a.reserve === C(a.supply), 'reserve != C(supply)');
       need(a.supply === BigInt(p.supply_after) && a.reserve === BigInt(p.reserve_after), 'state_after mismatch');
-      need(a.locked <= a.supply, 'locked > supply');
+      need(a.locked + a.burned <= a.supply, 'locked + burned > supply');
       const { platform, creatorPool } = splitFee(fee);
       need(BigInt(p.fee_platform) === platform && BigInt(p.fee_creator) === creatorPool, 'fee split mismatch');
       const parts = distribute(creatorPool, a.split.map((x) => x.bps));
@@ -92,7 +96,22 @@ export function applyEvent(s: LogState, ev: LogEvent): void {
         'creator split mismatch',
       );
       a.feeAccrued += creatorPool;
-      s.platformFees += platform;
+      a.carry += platform; // the platform share is spent on the buyback that follows
+      return;
+    }
+    case 'BUYBACK': {
+      const a = asset();
+      need(BigInt(p.budget) === a.carry, 'buyback budget != carry');
+      const delta = maxUnitsForSats(a.supply, a.carry, SUPPLY - a.supply);
+      need(delta > 0n && delta === BigInt(p.delta), 'buyback units mismatch');
+      const gross = C(a.supply + delta) - C(a.supply);
+      need(gross === BigInt(p.gross), 'buyback gross mismatch');
+      a.supply += delta;
+      a.reserve += gross;
+      a.burned += delta;
+      a.carry -= gross;
+      need(a.reserve === C(a.supply), 'reserve != C(supply)');
+      need(a.carry === BigInt(p.carry_after) && a.supply === BigInt(p.supply_after) && a.reserve === BigInt(p.reserve_after) && a.burned === BigInt(p.burned_after), 'buyback state mismatch');
       return;
     }
     case 'LOCK': {
@@ -135,22 +154,28 @@ export function stateRoot(s: LogState): string {
       supply: a.supply,
       reserve: a.reserve,
       locked: a.locked,
+      burned: a.burned,
+      carry: a.carry,
       fee_accrued: a.feeAccrued,
       fee_claimed: a.feeClaimed,
     }));
-  return sha256Hex(canonical({ assets, platform_fees: s.platformFees }));
+  return sha256Hex(canonical({ assets, dev_fund: s.devFund }));
 }
 
 export function stateTotals(s: LogState) {
   let supply = 0n,
     reserve = 0n,
     locked = 0n,
+    burned = 0n,
+    carry = 0n,
     fees = 0n;
   for (const a of s.assets.values()) {
     supply += a.supply;
     reserve += a.reserve;
     locked += a.locked;
+    burned += a.burned;
+    carry += a.carry;
     fees += a.feeAccrued - a.feeClaimed;
   }
-  return { assets: s.assets.size, supply, reserve, locked, unclaimed_creator_fees: fees, platform_fees: s.platformFees };
+  return { assets: s.assets.size, supply, reserve, locked, burned, buyback_pending: carry, unclaimed_creator_fees: fees, dev_fund: s.devFund };
 }

@@ -11,6 +11,7 @@ import {
   LAUNCH_FEE_SATS,
   MAX_FIRST_BUY_UNITS,
   MIN_FIRST_BUY_SATS,
+  maxUnitsForSats,
   quoteBuyUnits,
   quoteSellUnits,
   splitFee,
@@ -116,6 +117,7 @@ export interface TradeResult {
   receipt: { receipt_hash: string; sig: string };
   signatures_asset: BlindSignature[];
   signatures_sat: BlindSignature[];
+  buyback?: { units: bigint; sats: bigint; carry: bigint };
 }
 
 async function settleTrade(mint: Mint, c: Conn, r: SettleReq): Promise<TradeResult> {
@@ -169,7 +171,7 @@ async function settleTrade(mint: Mint, c: Conn, r: SettleReq): Promise<TradeResu
   const supplyAfter = r.side === 'BUY' ? q + r.delta : q - r.delta;
   const reserveAfter = r.side === 'BUY' ? big(row.reserve_sats) + gross : big(row.reserve_sats) - gross;
   if (reserveAfter !== C(supplyAfter)) throw new ApiError(500, 'INVARIANT_VIOLATION', 'reserve != C(supply)');
-  if (supplyAfter < big(row.locked_supply)) throw new ApiError(409, 'LOCKED_SUPPLY', 'sell would drop supply below locked supply');
+  if (supplyAfter < big(row.locked_supply) + big(row.burned_supply)) throw new ApiError(409, 'LOCKED_SUPPLY', 'sell would drop supply below locked + burned supply');
 
   const { platform, creatorPool } = splitFee(fee);
   const alloc = (await c.query<any>(`SELECT recipient_pubkey,weight_bps FROM fee_allocations WHERE asset_id=$1 ORDER BY idx`, [r.assetId])).rows;
@@ -182,7 +184,6 @@ async function settleTrade(mint: Mint, c: Conn, r: SettleReq): Promise<TradeResu
       [r.assetId, alloc[i].recipient_pubkey, parts[i].toString()],
     );
   }
-  await c.query(`UPDATE platform_ledger SET fees_sats = fees_sats + $1::bigint WHERE id=1`, [platform.toString()]);
 
   const seq = big(row.trade_count) + 1n;
   const tradeId = bytesToHex(randomBytes(16));
@@ -213,6 +214,20 @@ async function settleTrade(mint: Mint, c: Conn, r: SettleReq): Promise<TradeResu
     audit_seq: auditSeq,
   };
   const receipt = mint.signReceipt(trade);
+  // The platform's 0.7% buys this token on the curve and burns it (carry = sats not yet enough for one more unit).
+  const burnedBefore = big(row.burned_supply);
+  const budget = big(row.buyback_carry) + platform;
+  const bbUnits = maxUnitsForSats(supplyAfter, budget, SUPPLY - supplyAfter);
+  const bbGross = bbUnits > 0n ? C(supplyAfter + bbUnits) - C(supplyAfter) : 0n;
+  const carryAfter = budget - bbGross;
+  const supplyFinal = supplyAfter + bbUnits;
+  const reserveFinal = reserveAfter + bbGross;
+  if (reserveFinal !== C(supplyFinal)) throw new ApiError(500, 'INVARIANT_VIOLATION', 'reserve != C(supply) after buyback');
+  if (bbUnits > 0n)
+    await appendEvent(c, 'BUYBACK', {
+      asset_id: r.assetId, trade_id: tradeId, budget, delta: bbUnits, gross: bbGross, carry_after: carryAfter,
+      supply_after: supplyFinal, reserve_after: reserveFinal, burned_after: burnedBefore + bbUnits,
+    });
   await c.query(
     `INSERT INTO trades(trade_id,asset_id,seq,side,delta_units,gross_sats,fee_sats,reserve_after,supply_after,receipt_sig,audit_seq)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
@@ -221,14 +236,15 @@ async function settleTrade(mint: Mint, c: Conn, r: SettleReq): Promise<TradeResu
   );
   await c.query(
     `UPDATE assets SET supply=$2, reserve_sats=$3, trade_count=$4, volume_sats=volume_sats+$5::bigint,
-       creator_fee_accrued=creator_fee_accrued+$6::bigint WHERE asset_id=$1`,
-    [r.assetId, supplyAfter.toString(), reserveAfter.toString(), seq.toString(), gross.toString(), creatorPool.toString()],
+       creator_fee_accrued=creator_fee_accrued+$6::bigint, burned_supply=$7, buyback_carry=$8 WHERE asset_id=$1`,
+    [r.assetId, supplyFinal.toString(), reserveFinal.toString(), seq.toString(), gross.toString(), creatorPool.toString(),
+      (burnedBefore + bbUnits).toString(), carryAfter.toString()],
   );
   if (r.extraSat) await c.query(`UPDATE platform_ledger SET fees_sats = fees_sats + $1::bigint WHERE id=1`, [r.extraSat.toString()]);
 
   const signatures_asset = await mint.signOutputs(c, r.outAsset, operation);
   const signatures_sat = await mint.signOutputs(c, r.outSat, operation);
-  return { trade, receipt, signatures_asset, signatures_sat };
+  return { trade, receipt, signatures_asset, signatures_sat, buyback: { units: bbUnits, sats: bbGross, carry: carryAfter } };
 }
 
 export async function executeTrade(
@@ -483,7 +499,7 @@ export async function lockVault(
     if ([...t.keys()].some((k) => k !== ksId)) throw new ApiError(400, 'WRONG_UNIT');
     if ((t.get(ksId) ?? 0n) !== amount + outSum) throw new ApiError(400, 'UNBALANCED', 'inputs must equal amount + change');
     const newLocked = big(a.locked_supply) + amount;
-    if (newLocked > big(a.supply)) throw new ApiError(409, 'LOCK_EXCEEDS_SUPPLY');
+    if (newLocked + big(a.burned_supply) > big(a.supply)) throw new ApiError(409, 'LOCK_EXCEEDS_SUPPLY');
     const vaultId = bytesToHex(randomBytes(16));
     const salt = bytesToHex(randomBytes(32));
     const commitment = vaultCommitment(body.asset_id, vaultId, body.beneficiary_pubkey, salt);

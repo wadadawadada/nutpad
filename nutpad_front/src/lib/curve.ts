@@ -111,6 +111,18 @@ export function quoteSellUnits(q: bigint, delta: bigint): SellQuote {
   return { delta, gross, fee, payout: gross - fee };
 }
 
+/** Largest delta (<= maxDelta) whose curve cost C(q+delta)-C(q) fits within `budget` sats. No fee. */
+export function maxUnitsForSats(q: bigint, budget: bigint, maxDelta: bigint): bigint {
+  let lo = 0n;
+  let hi = maxDelta < SUPPLY - q ? maxDelta : SUPPLY - q;
+  while (lo < hi) {
+    const mid = (lo + hi + 1n) / 2n;
+    if (buyGross(q, mid) <= budget) lo = mid;
+    else hi = mid - 1n;
+  }
+  return lo;
+}
+
 /** Spot price scaled by 1e9 (sats per token * 1e9), display only. */
 export function spotPriceNano(q: bigint): bigint {
   return 1_000_000n + (2n * (K / A_DEN) * 1_000_000_000n * q) / (SUPPLY * SUPPLY);

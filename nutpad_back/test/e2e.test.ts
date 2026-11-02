@@ -18,7 +18,7 @@ const { createApp } = await import('../src/app.js');
 const { createCheckpoint } = await import('../src/audit.js');
 const { applyEvent, emptyState, stateRoot } = await import('../src/replay.js');
 const { sha256Hex, canonical } = await import('../src/util.js');
-const { quoteBuyUnits, quoteSellUnits } = await import('../src/curve.js');
+const { C, quoteBuyUnits, quoteSellUnits } = await import('../src/curve.js');
 
 let base = '';
 let server: any;
@@ -143,7 +143,8 @@ test('launch: 1000 fee + first buy of 2.1M units, idempotent retry', async () =>
   assert.equal(again.status, 200);
   assert.deepEqual(again.body.trade.trade_id, r.body.trade.trade_id, 'retry returns the original result');
   const a = await api('GET', `/assets/${assetId}`);
-  assert.equal(a.body.supply, '2100000');
+  assert.equal(BigInt(a.body.supply) - BigInt(a.body.burned_supply), 2_100_000n, 'net of buyback burn');
+  assert.ok(BigInt(a.body.burned_supply) > 0n, 'platform fee share bought and burned tokens');
   assert.equal(a.body.trade_count, '1');
 });
 
@@ -154,8 +155,9 @@ test('launch requires login and cannot skip the first buy', async () => {
 
 test('double spend: one proof cannot fund two concurrent trades', async () => {
   const funds = await faucet(2000n);
+  const supNow = BigInt((await api('GET', `/assets/${assetId}`)).body.supply);
   const mk = () => {
-    const q = quoteBuyUnits(2_100_000n, 1000n);
+    const q = quoteBuyUnits(supNow, 1000n);
     const o = blindOutputs(assetKs, 1000n);
     const c = blindOutputs(satKs, 2000n - q.total);
     return { asset_id: assetId, side: 'BUY', delta: '1000', inputs: funds, outputs_asset: o.map((x) => x.msg), outputs_sat: c.map((x) => x.msg) };
@@ -170,14 +172,14 @@ test('double spend: one proof cannot fund two concurrent trades', async () => {
   assert.equal(failed.body.error.code, 'TOKEN_ALREADY_SPENT');
   const ok = a.status === 200 ? a : b;
   const state = (await api('GET', `/assets/${assetId}`)).body;
-  assert.equal(state.supply, '2101000');
+  assert.equal(BigInt(state.supply) - BigInt(state.burned_supply), 2_101_000n);
   assert.equal(state.trade_count, '2');
   void ok;
 });
 
 test('BUY more, then SELL: exact accounting and signed receipts', async () => {
   const funds = await faucet(30_000n);
-  const q = quoteBuyUnits(2_101_000n, 500_000n);
+  const q = quoteBuyUnits(BigInt((await api('GET', `/assets/${assetId}`)).body.supply), 500_000n);
   const o = blindOutputs(assetKs, 500_000n);
   const c = blindOutputs(satKs, 30_000n - q.total);
   const r = await api('POST', '/trades/execute', { asset_id: assetId, side: 'BUY', delta: '500000', limit_sats: q.total.toString(), inputs: funds, outputs_asset: o.map((x) => x.msg), outputs_sat: c.map((x) => x.msg) }, { key: randomUUID() });
@@ -195,14 +197,15 @@ test('BUY more, then SELL: exact accounting and signed receipts', async () => {
   const sellAmt = 100_000n;
   const inSum = sum(take);
   assert.ok(inSum >= sellAmt);
-  const sq = quoteSellUnits(2_601_000n, sellAmt);
+  const sq = quoteSellUnits(BigInt((await api('GET', `/assets/${assetId}`)).body.supply), sellAmt);
   const chgTok = blindOutputs(assetKs, inSum - sellAmt);
   const payout = blindOutputs(satKs, sq.payout);
   const s = await api('POST', '/trades/execute', { asset_id: assetId, side: 'SELL', delta: sellAmt.toString(), inputs: take, outputs_asset: chgTok.map((x) => x.msg), outputs_sat: payout.map((x) => x.msg) }, { key: randomUUID() });
   assert.equal(s.status, 200, JSON.stringify(s.body));
   assert.equal(s.body.trade.side, 'SELL');
   const a = (await api('GET', `/assets/${assetId}`)).body;
-  assert.equal(a.supply, '2501000');
+  assert.equal(BigInt(a.supply) - BigInt(a.burned_supply), 2_501_000n);
+  assert.equal(BigInt(a.reserve_sats), C(BigInt(a.supply)), 'reserve == C(supply) incl. burned');
   // sold proofs cannot be reused
   const re = await api('POST', '/trades/execute', { asset_id: assetId, side: 'SELL', delta: sellAmt.toString(), inputs: take, outputs_asset: [], outputs_sat: [] }, { key: randomUUID() });
   assert.equal(re.status, 400);

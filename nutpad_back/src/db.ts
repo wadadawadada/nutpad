@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS assets (
   CHECK (locked_supply >= 0 AND locked_supply <= supply),
   CHECK (creator_fee_claimed <= creator_fee_accrued)
 );
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS burned_supply BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS buyback_carry BIGINT NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS keysets (
   keyset_id TEXT PRIMARY KEY, scope TEXT NOT NULL, asset_id TEXT, unit TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true
 );

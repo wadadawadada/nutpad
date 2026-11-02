@@ -182,17 +182,22 @@ export function createApp(mint: Mint) {
     supply: big(r.supply),
     reserve_sats: big(r.reserve_sats),
     locked_supply: big(r.locked_supply),
-    free_supply: big(r.supply) - big(r.locked_supply),
+    free_supply: big(r.supply) - big(r.locked_supply) - big(r.burned_supply),
     price_nano: spotPriceNano(big(r.supply)),
     trade_count: big(r.trade_count),
     volume_sats: big(r.volume_sats),
+    fees_total: big(r.fees_total ?? 0),
+    creator_fees: big(r.creator_fee_accrued ?? 0),
+    buyback_fees: big(r.fees_total ?? 0) - big(r.creator_fee_accrued ?? 0),
+    burned_supply: big(r.burned_supply ?? 0),
+    buyback_carry: big(r.buyback_carry ?? 0),
     creator_initial_units: big(r.first_buy_units),
     status: r.status,
     announcement_state: r.announcement_state,
     manifest_hash: r.manifest_hash,
     created_at: r.created_at,
   });
-  const ASSET_COLS = `asset_id,unit,name,ticker,description,creator_pubkey,image_hash,supply,reserve_sats,locked_supply,
+  const ASSET_COLS = `(SELECT COALESCE(SUM(fee_sats),0) FROM trades t WHERE t.asset_id=assets.asset_id) AS fees_total,creator_fee_accrued,asset_id,unit,name,ticker,description,creator_pubkey,image_hash,supply,reserve_sats,locked_supply,burned_supply,buyback_carry,
     trade_count,volume_sats,first_buy_units,status,announcement_state,manifest_hash,created_at`;
 
   app.get('/assets', h(async (req) => {
@@ -243,7 +248,7 @@ export function createApp(mint: Mint) {
 
   app.get('/assets/:id/vaults', h(async (req) => {
     const r = await db.query<any>(
-      `SELECT vault_id,asset_id,amount,unlock_at,state,beneficiary_commitment,lock_audit_seq,lock_receipt_sig FROM vaults WHERE asset_id=$1 ORDER BY created_at DESC`,
+      `SELECT vault_id,asset_id,amount,unlock_at,state,beneficiary_commitment,lock_audit_seq,lock_receipt_sig,created_at FROM vaults WHERE asset_id=$1 ORDER BY created_at DESC`,
       [req.params.id],
     );
     return { vaults: r.rows.map(vaultView) };
@@ -258,6 +263,7 @@ export function createApp(mint: Mint) {
     beneficiary_commitment: v.beneficiary_commitment,
     audit_sequence: big(v.lock_audit_seq),
     receipt_sig: v.lock_receipt_sig,
+    locked_at: v.created_at ? new Date(v.created_at).toISOString() : null,
   });
 
   app.post('/assets/launch/quote', limit('lquote', 60, 60_000), h(async (req) => {
@@ -424,24 +430,27 @@ export function createApp(mint: Mint) {
 
   app.get('/audit/solvency', h(async () => {
     const unspent = await unspentByKeyset(db);
-    const assets = (await db.query<any>(`SELECT asset_id,ticker,supply,locked_supply,reserve_sats,creator_fee_accrued,creator_fee_claimed FROM assets`)).rows;
+    const assets = (await db.query<any>(`SELECT asset_id,ticker,supply,locked_supply,burned_supply,buyback_carry,reserve_sats,creator_fee_accrued,creator_fee_claimed FROM assets`)).rows;
     const sat = unspent.get(mint.satKeysetId) ?? 0n;
     const reserve = assets.reduce((a, r) => a + big(r.reserve_sats), 0n);
     const unclaimed = assets.reduce((a, r) => a + big(r.creator_fee_accrued) - big(r.creator_fee_claimed), 0n);
+    const carry = assets.reduce((a, r) => a + big(r.buyback_carry), 0n);
     const platform = big((await db.query<any>(`SELECT fees_sats FROM platform_ledger WHERE id=1`)).rows[0].fees_sats);
     const faucet = big((await db.query<any>(`SELECT value FROM meta WHERE key='faucet_total'`)).rows[0]?.value ?? 0);
     const tokenCheck = assets.map((a) => {
       const ks = mint.assetKeysetId(a.asset_id)!;
       const outstanding = unspent.get(ks) ?? 0n;
-      return { asset_id: a.asset_id, ticker: a.ticker, outstanding_token_proofs: outstanding, expected: big(a.supply) - big(a.locked_supply), ok: outstanding === big(a.supply) - big(a.locked_supply), curve_ok: big(a.reserve_sats) === C(big(a.supply)) };
+      return { asset_id: a.asset_id, ticker: a.ticker, outstanding_token_proofs: outstanding, expected: big(a.supply) - big(a.locked_supply) - big(a.burned_supply), ok: outstanding === big(a.supply) - big(a.locked_supply) - big(a.burned_supply), curve_ok: big(a.reserve_sats) === C(big(a.supply)) };
     });
-    const obligations = sat + reserve + unclaimed + platform;
+    const obligations = sat + reserve + unclaimed + platform + carry;
     const t = await lnsvc.treasuryReport(mint);
     return {
       sat_ecash_outstanding: sat,
       curve_reserves: reserve,
       creator_fee_liabilities: unclaimed,
-      platform_fees: platform,
+      dev_fund: platform,
+      buyback_carry: carry,
+      burned_supply: assets.reduce((a, r) => a + big(r.burned_supply), 0n),
       total_sat_obligations: obligations,
       in_flight_withdrawals: t.in_flight_withdrawals,
       demo_faucet_minted: faucet,

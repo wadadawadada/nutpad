@@ -6,10 +6,10 @@ const nf = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
 const SITE = {
   title: 'nutpad — Cashu token launchpad',
-  description: 'Launch and trade Cashu ecash tokens on a linear bonding curve. Nostr login, local-first wallet, public audit log.',
+  description: 'Launch ecash memes. Trade on a curve. Cashu ecash tokens with Nostr login, a local-first wallet and a public, verifiable audit log.',
 };
 
-function tagsFor({ title, description, url, image, big }) {
+function tagsFor({ title, description, url, image, big, wide }) {
   const t = [
     ['property', 'og:type', 'website'],
     ['property', 'og:site_name', 'nutpad'],
@@ -17,12 +17,13 @@ function tagsFor({ title, description, url, image, big }) {
     ['property', 'og:description', description],
     ['property', 'og:url', url],
     ['name', 'description', description],
-    ['name', 'twitter:card', image && big ? 'summary_large_image' : image ? 'summary' : 'summary'],
+    ['name', 'twitter:card', image && big ? 'summary_large_image' : 'summary'],
     ['name', 'twitter:title', title],
     ['name', 'twitter:description', description],
   ];
   if (image) {
-    t.push(['property', 'og:image', image], ['property', 'og:image:alt', title], ['name', 'twitter:image', image]);
+    t.push(['property', 'og:image', image], ['property', 'og:image:alt', title], ['name', 'twitter:image', image], ['name', 'twitter:image:alt', title]);
+    if (wide) t.push(['property', 'og:image:width', '1200'], ['property', 'og:image:height', '630'], ['property', 'og:image:type', 'image/png']);
   }
   return t.map(([k, n, v]) => `<meta ${k}="${esc(n)}" content="${esc(v)}" />`).join('\n    ');
 }
@@ -38,7 +39,7 @@ async function fetchAsset(apiUrl, id) {
 
 /** @param html the built index.html  @param opts { origin, apiUrl, path } */
 export async function withPreview(html, { origin, apiUrl, path }) {
-  let meta = { title: SITE.title, description: SITE.description, url: origin + path, image: null, big: false };
+  let meta = { title: SITE.title, description: SITE.description, url: origin + path, image: `${origin}/og-image.png`, big: true, wide: true };
   const m = /^\/token\/([0-9a-f]{64})\/?$/.exec(path);
   if (m) {
     const a = await fetchAsset(apiUrl, m[1]);

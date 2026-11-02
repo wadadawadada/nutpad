@@ -16,7 +16,7 @@ if (!process.argv.includes('--yes')) {
 }
 
 const db = await openDb();
-const before = await db.query<any>(`SELECT COUNT(*) AS n, COALESCE(SUM(reserve_sats),0) AS r, COALESCE(SUM(creator_fee_accrued - creator_fee_claimed),0) AS f FROM assets`);
+const before = await db.query<any>(`SELECT COUNT(*) AS n, COALESCE(SUM(reserve_sats),0) AS r, COALESCE(SUM(creator_fee_accrued - creator_fee_claimed + buyback_carry),0) AS f FROM assets`);
 const plat = await db.query<any>(`SELECT fees_sats FROM platform_ledger WHERE id=1`);
 const writtenOff = big(before.rows[0].r) + big(before.rows[0].f) + big(plat.rows[0].fees_sats);
 

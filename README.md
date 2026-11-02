@@ -100,7 +100,7 @@ flow against an in-process simulator (`LN_BACKEND=fake`). Run one real testnet r
 
 ## What is implemented
 
-- Integer linear bonding curve (`C(0)=0`, `C(21M)=1,000,000`), 1% fee `ceil`, split 70/30 platform/creators, largest-remainder split among recipients; spec vector 11,890 / 119 / 83 / 36 is a test.
+- Integer linear bonding curve (`C(0)=0`, `C(21M)=1,000,000`), 1% fee `ceil`, split 70/30 buyback-and-burn/creators (the 0.7% share buys the same token on the curve and burns it; the 1,000 sat launch fee is the dev fund), largest-remainder split among recipients; spec vector 11,890 / 119 / 83 / 36 is a test.
 - Cashu BDHKE (secp256k1) mint with a keyset per asset (custom unit) + `sat` keyset; `/v1/keysets|keys|swap|checkstate|restore`.
 - Atomic launch (1,000 sat fee + mandatory first buy ≤10% supply, trade #1), BUY/SELL, per-asset serialization (`SELECT … FOR UPDATE`), proof spending via a unique key (double-spend safe), `Idempotency-Key` on every mutation with stored results.
 - Nostr login (NIP-98-style challenge, replay protected), signed immutable manifest (kind 30078), durable outbox with retry to relays.

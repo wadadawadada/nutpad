@@ -48,7 +48,9 @@ export default function Audit() {
               <Stat k="Sat ecash outstanding" v={fmt(sol.sat_ecash_outstanding)} />
               <Stat k="Curve reserves" v={fmt(sol.curve_reserves)} />
               <Stat k="Creator fee liabilities" v={fmt(sol.creator_fee_liabilities)} />
-              <Stat k="Platform fees" v={fmt(sol.platform_fees)} />
+              <Stat k="Dev fund (launch fees)" v={fmt(sol.dev_fund)} />
+              <Stat k="Buyback pending (carry)" v={fmt(sol.buyback_carry)} />
+              <Stat k="Tokens burned" v={fmt(sol.burned_supply)} />
               <Stat k="Total sat obligations" v={<b>{fmt(sol.total_sat_obligations)}</b>} />
             </div>
             <div>

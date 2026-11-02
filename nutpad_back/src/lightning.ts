@@ -131,9 +131,9 @@ export async function meltQuoteState(mint: Mint, id: string) {
 /** Σ sat obligations of the mint (ecash outstanding + curve reserves + all fees) */
 export async function satObligations(mint: Mint, c: Conn): Promise<bigint> {
   const unspent = await unspentByKeyset(c);
-  const a = (await c.query<any>(`SELECT reserve_sats,creator_fee_accrued,creator_fee_claimed FROM assets`)).rows;
+  const a = (await c.query<any>(`SELECT reserve_sats,creator_fee_accrued,creator_fee_claimed,buyback_carry FROM assets`)).rows;
   const plat = big((await c.query<any>(`SELECT fees_sats FROM platform_ledger WHERE id=1`)).rows[0].fees_sats);
-  return (unspent.get(mint.satKeysetId) ?? 0n) + a.reduce((s, r) => s + big(r.reserve_sats) + big(r.creator_fee_accrued) - big(r.creator_fee_claimed), 0n) + plat;
+  return (unspent.get(mint.satKeysetId) ?? 0n) + a.reduce((s, r) => s + big(r.reserve_sats) + big(r.creator_fee_accrued) - big(r.creator_fee_claimed) + big(r.buyback_carry), 0n) + plat;
 }
 
 export async function inFlightMelts(c: Conn): Promise<bigint> {

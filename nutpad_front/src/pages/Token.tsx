@@ -5,10 +5,11 @@ import { ago, fmt, fmtPrice, shortKey } from '../lib/format';
 import { nip19 } from 'nostr-tools';
 import { satKeysetId, trade, useWallet } from '../lib/wallet';
 import { Field, Stat, useAction, useCelebrate, useToast } from '../components/ui';
-import { CurveChart, PriceChart } from '../components/Charts';
+import { CandleChart, CurveChart, FRAMES, PriceChart, type Frame } from '../components/Charts';
 import type { AssetView } from './Explore';
 import { Nut, NutImg } from '../components/Nut';
 import { NostrIcon } from '../components/NostrIcon';
+import { PixelIcon } from '../components/PixelIcon';
 
 type Full = AssetView & { fee_split: { pubkey: string; bps: number }[]; manifest_json: string; manifest_event: any; free_supply: string };
 
@@ -106,8 +107,8 @@ function TradePanel({ asset, onDone }: { asset: AssetView; onDone: () => void })
   );
 }
 
-function Tile({ k, v, tone }: { k: string; v: React.ReactNode; tone?: string }) {
-  return <div className={`tile-stat ${tone ?? ''}`}><span className="label">{k}</span><b>{v}</b></div>;
+function Tile({ k, v, tone, sub }: { k: string; v: React.ReactNode; tone?: string; sub?: string }) {
+  return <div className={`tile-stat ${tone ?? ''}`}><span className="label">{k}</span><b>{v}</b>{sub && <span className="tile-sub">{sub}</span>}</div>;
 }
 
 export default function Token({ onLogin }: { onLogin: () => void }) {
@@ -118,7 +119,8 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
   const [vaults, setVaults] = useState<any[]>([]);
   const [audit, setAudit] = useState<any>(null);
   const [err, setErr] = useState('');
-  const [chart, setChart] = useState<'price' | 'curve'>('price');
+  const [chart, setChart] = useState<'price' | 'candles' | 'curve'>('price');
+  const [frame, setFrame] = useState<Frame>('1T');
   const [tab, setTab] = useState<'trades' | 'vaults' | 'info'>('trades');
   const w = useWallet();
   void onLogin;
@@ -146,18 +148,25 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
         {/* ───── hero ───── */}
         <div className="px t-hero2">
           <img className="t-avatar" src={imageUrl(a.asset_id)} alt={a.name} />
-          <div className="grow">
-            <div className="row" style={{ gap: 10, alignItems: 'baseline' }}>
-              <h1 style={{ margin: 0 }}>{a.name}</h1>
-              <span className="tag yellow">${a.ticker}</span>
+          <div className="t-main">
+            <div className="t-top">
+              <div className="t-name">
+                <h1>{a.name}</h1>
+                <span className="tag yellow">${a.ticker}</span>
+              </div>
+              <button className="icon-pill" onClick={() => copy(window.location.href, 'Link copied')} title="Copy link" aria-label="Copy link"><PixelIcon name="copy" size={16} /></button>
             </div>
-            <p className="t-desc">{a.description || <span className="dim">No description.</span>}</p>
-            <div className="row" style={{ gap: 8 }}>
-              <button className="chip npub" onClick={() => copy(npub, 'Creator npub copied')} title={npub}>creator {shortKey(a.creator_pubkey)} ⧉</button>
-              <a className="chip" href={`https://primal.net/p/${npub}`} target="_blank" rel="noopener noreferrer" title="Open the creator's profile on Primal"><NostrIcon size={14} /> See on Nostr ↗</a>
-              <span className={`tag ${stTone}`}>{st}</span>
-              <span className="tag">{a.announcement_state.replace('ANNOUNCEMENT_', '').toLowerCase()}</span>
-              <button className="chip" onClick={() => copy(window.location.href, 'Link copied')}>Copy link ⧉</button>
+            <p className="t-desc">{a.description || <span className="dim">No description</span>}</p>
+            <div className="t-meta">
+              <div className="seg">
+                <span className="seg-label" title={npub}><PixelIcon name="user" size={13} />{shortKey(a.creator_pubkey)}</span>
+                <button className="seg-btn" onClick={() => copy(npub, 'Creator npub copied')} title="Copy creator npub" aria-label="Copy creator npub"><PixelIcon name="copy" size={13} /></button>
+                <a className="seg-btn" href={`https://primal.net/p/${npub}`} target="_blank" rel="noopener noreferrer" title="Open the creator's profile on Primal"><NostrIcon size={14} />Nostr ↗</a>
+              </div>
+              <div className="t-status">
+                <span className="status" title="Audit self-check"><i className={`sd ${stTone}`} />{st}</span>
+                <span className="status" title="Nostr announcement"><i className="sd" />{a.announcement_state.replace('ANNOUNCEMENT_', '').toLowerCase()}</span>
+              </div>
             </div>
           </div>
         </div>
@@ -168,7 +177,9 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
           <Tile k="Supply sold" v={`${pct}%`} />
           <Tile k="Reserve" v={<>{fmt(a.reserve_sats)}<small> sats</small></>} />
           <Tile k="Volume" v={<>{fmt(a.volume_sats)}<small> sats</small></>} />
+          <Tile k="Fees earned" v={<>{fmt(a.fees_total ?? 0)}<small> sats</small></>} sub={`creators ${fmt(a.creator_fees ?? 0)} · buyback ${fmt(a.buyback_fees ?? 0)}`} />
           <Tile k="Trades" v={fmt(a.trade_count)} />
+          <Tile k="Burned" v={fmt(a.burned_supply ?? 0)} sub="bought back with the 0.7% fee" />
           <Tile k="Locked" v={fmt(a.locked_supply)} />
         </div>
 
@@ -183,13 +194,30 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
         {/* ───── charts ───── */}
         <div className="px">
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-            <h3 style={{ margin: 0 }}>{chart === 'price' ? 'Price history' : 'Bonding curve'}</h3>
+            <h3 style={{ margin: 0 }}>{chart === 'price' ? 'Price history' : chart === 'candles' ? 'Candlesticks' : 'Bonding curve'}</h3>
             <div className="pills">
               <button className={`pill ${chart === 'price' ? 'on' : ''}`} onClick={() => setChart('price')}>Price</button>
+              <button className={`pill ${chart === 'candles' ? 'on' : ''}`} onClick={() => setChart('candles')}>Candles</button>
               <button className={`pill ${chart === 'curve' ? 'on' : ''}`} onClick={() => setChart('curve')}>Curve</button>
             </div>
           </div>
-          {chart === 'price' ? <PriceChart trades={trades} /> : <CurveChart supply={BigInt(a.supply)} />}
+          {chart === 'candles' && (
+            <div className="pills" style={{ marginBottom: 10 }}>
+              {FRAMES.map(([k, lab]) => <button key={k} className={`pill ${frame === k ? 'on' : ''}`} onClick={() => setFrame(k)}>{lab}</button>)}
+            </div>
+          )}
+          {chart === 'price' && <PriceChart trades={trades} vaults={vaults} />}
+          {chart === 'candles' && <CandleChart trades={trades} vaults={vaults} frame={frame} />}
+          {chart === 'curve' && <CurveChart supply={BigInt(a.supply)} />}
+          {chart !== 'curve' && (
+            <div className="chart-legend">
+              <span><i style={{ background: '#3ddc84' }} />price up</span>
+              <span><i style={{ background: '#ff7088' }} />price down</span>
+              <span><i style={{ background: '#4fd9ff' }} />DEV BUY: the launch buy by the creator</span>
+              <span><i style={{ background: '#ffb627' }} />LOCK: tokens locked in a vault</span>
+              <span className="dim">Later trades are anonymous by design, so dev sells cannot be identified.</span>
+            </div>
+          )}
         </div>
 
         {/* ───── tabs ───── */}
