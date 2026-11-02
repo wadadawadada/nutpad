@@ -733,3 +733,12 @@ button:disabled::after { display: none; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .chart-legend i { width: 10px; height: 10px; display: inline-block; flex: none; }
 .chart-legend .dim { flex-basis: 100%; font-size: 0.74rem; }
+
+/* wallet quick actions: 2x2 on the right of the balance, bottom row outlined */
+.wallet-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 330px; max-width: 100%; }
+.wallet-quick button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 46px; padding: 0 12px; text-shadow: none; white-space: nowrap; }
+.wallet-quick button .pxi { width: 18px; height: 18px; flex: none; }
+.wallet-quick button.green, .wallet-quick button.red { color: #0d0b26; }
+.wallet-quick button.plain { background: transparent; color: var(--ink); border: 2px solid rgba(255, 255, 255, 0.45); box-shadow: none; }
+.wallet-quick button.plain:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
+@media (max-width: 640px) { .wallet-quick { width: 100%; } }

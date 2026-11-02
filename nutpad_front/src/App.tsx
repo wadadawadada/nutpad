@@ -12,6 +12,7 @@ import { useToast } from './components/ui';
 import LoginModal from './components/LoginModal';
 import Banner from './components/Banner';
 import { NutImg } from './components/Nut';
+import Home from './pages/Home';
 import Explore from './pages/Explore';
 import Token from './pages/Token';
 import Create from './pages/Create';
@@ -48,14 +49,14 @@ export default function App() {
       <header className="top">
         <div className="bar-in">
           <nav>
-            <NavLink to="/" end><PixelIcon name="explore" size={18} />Explore</NavLink>
+            <NavLink to="/" end aria-label="Home" title="Home"><PixelIcon name="home" size={18} /></NavLink>
+            <NavLink to="/explore"><PixelIcon name="explore" size={18} />Explore</NavLink>
             <NavLink to="/create"><PixelIcon name="create" size={18} />Create</NavLink>
-            <NavLink to="/wallet"><PixelIcon name="wallet" size={18} />Wallet</NavLink>
             <NavLink to="/vault"><PixelIcon name="vault" size={18} />Vault</NavLink>
             <NavLink to="/audit"><PixelIcon name="audit" size={18} />Audit</NavLink>
           </nav>
           <span className="grow" />
-          <NavLink to="/wallet" className="tag yellow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><PixelIcon name="coin" size={14} />{sat ? fmt(w.balance(sat)) : '…'} sats</NavLink>
+          <NavLink to="/wallet" className="tag yellow" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><PixelIcon name="wallet" size={20} />{sat ? fmt(w.balance(sat)) : '…'} sats</NavLink>
           {auth.pubkey ? (
             <div className="row" style={{ gap: 8 }}>
               <a className="tag cyan npub" href={`https://primal.net/p/${auth.npub}`} target="_blank" rel="noopener noreferrer" title="Open your Primal profile"><PixelIcon name="user" size={14} />{profileName ?? shortKey(auth.pubkey)}</a>
@@ -69,7 +70,8 @@ export default function App() {
       </header>
       <main className="wrap">
         <Routes>
-          <Route path="/" element={<Explore />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/explore" element={<Explore />} />
           <Route path="/token/:id" element={<Token onLogin={() => setLogin(true)} />} />
           <Route path="/create" element={<Create onLogin={() => setLogin(true)} />} />
           <Route path="/wallet" element={<WalletPage onLogin={() => setLogin(true)} />} />

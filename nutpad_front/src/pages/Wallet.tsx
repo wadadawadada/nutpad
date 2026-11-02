@@ -111,8 +111,8 @@ export default function WalletPage({ onLogin }: { onLogin: () => void }) {
         <div className="wallet-quick">
           <button className="green" onClick={() => goto('deposit')}><PixelIcon name="deposit" size={16} />Deposit</button>
           <button className="red" onClick={() => goto('withdraw')}><PixelIcon name="withdraw" size={16} />Withdraw</button>
-          <button onClick={() => { if (!sendKs && sat) setSendKs(sat.id); goto('send'); }}><PixelIcon name="send" size={16} />Send</button>
-          <button className="cyan" onClick={() => goto('receive')}><PixelIcon name="receive" size={16} />Receive</button>
+          <button className="plain" onClick={() => { if (!sendKs && sat) setSendKs(sat.id); goto('send'); }}><PixelIcon name="send" size={16} />Send</button>
+          <button className="plain" onClick={() => goto('receive')}><PixelIcon name="receive" size={16} />Receive</button>
           {info?.demo_faucet && <button className="ghost" onClick={() => goto('faucet')}>+ Test sats</button>}
         </div>
       </div>
