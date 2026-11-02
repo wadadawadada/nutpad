@@ -29,8 +29,8 @@ export function launchPost(o: { ticker: string; name: string; description: strin
   const content = [
     `Launched $${o.ticker} — ${o.name} on ${SITE}`,
     o.description.trim().slice(0, 300),
-    o.url,
     cashu ? `Powered by Cashu ecash: nostr:${cashu.npub}` : 'Powered by @Cashu ecash',
+    o.url, // last, so clients build the link preview card from it
   ].filter(Boolean).join('\n\n');
   const tags: string[][] = [['t', 'nutpad'], ['t', 'cashu'], ['r', o.url]];
   if (cashu) tags.push(['p', cashu.hex]);
