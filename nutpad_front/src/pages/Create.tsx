@@ -87,7 +87,7 @@ export default function Create({ onLogin }: { onLogin: () => void }) {
         launch: { fee_sats: '1000', min_first_buy_sats: '100', max_first_buy_units: '2100000' },
       };
       const q = await api('POST', '/assets/launch/quote', { manifest, units: quote.delta.toString() });
-      setStep('1/2 Approve the manifest signature in your signer app…');
+      setStep('1/2 Approve the manifest signature in your signer app… (no request? Log out, log in again, then retry)');
       const signer = await auth.getSigner();
       const event = await signer.signEvent({ kind: 30078, created_at: Math.floor(Date.now() / 1000), tags: [['d', manifest.nonce], ['t', 'nutpad-manifest']], content: q.content });
       const url = `${window.location.origin}/token/${q.asset_id}`;

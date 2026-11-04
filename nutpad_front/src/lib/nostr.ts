@@ -151,6 +151,8 @@ export async function signerFromStored(s: Stored): Promise<Signer> {
   if (s.kind === 'bunker' && s.bunker) {
     // the page was reloaded: reopen the NIP-46 channel with the stored client key (the signer already trusts it)
     const bs = BunkerSigner.fromBunker(hexToBytes(s.bunker.clientSk), s.bunker.pointer, { timeout: 120_000, onauth: (url) => window.open(url, '_blank', 'noopener,width=480,height=720') });
+    // some signers want the channel announced again; never wait long for it
+    await Promise.race([bs.connect().catch(() => {}), new Promise((r) => setTimeout(r, 4000))]);
     return wrapBunker(bs, s.pubkey);
   }
   if (s.kind === 'bunker')
