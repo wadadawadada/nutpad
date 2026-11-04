@@ -1,6 +1,6 @@
 // Client-side Cashu (NUT-00 BDHKE) with deterministic, seed-derived secrets.
 // Derivation is HMAC-SHA256 based (nutpad scheme, NOT NUT-13 byte-compatible).
-import { secp256k1 } from '@noble/curves/secp256k1.js';
+import { schnorr, secp256k1 } from '@noble/curves/secp256k1.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { bytesToHex, hexToBytes, concatBytes, utf8ToBytes } from '@noble/hashes/utils.js';
@@ -14,6 +14,7 @@ export interface Proof {
   amount: number;
   secret: string;
   C: string;
+  witness?: string;
 }
 export interface BlindedMessage {
   id: string;
@@ -80,3 +81,41 @@ export function splitAmount(n: bigint | number): number[] {
 }
 
 export const newSeedHex = () => bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+
+// ------------------------------------------------------------------ NUT-10 / NUT-11 (P2PK)
+
+/** Wallet key used to receive locked ecash. Derived from the wallet seed, so a restored wallet gets it back. */
+const p2pkSk = (seedHex: string): Uint8Array =>
+  hexToBytes(scalar(hmac(sha256, hexToBytes(seedHex), utf8ToBytes('nutpad/p2pk/v1'))).toString(16).padStart(64, '0'));
+export const p2pkPub = (seedHex: string) => '02' + bytesToHex(schnorr.getPublicKey(p2pkSk(seedHex)));
+
+/** Plain secrets are hex; a NUT-10 secret is a JSON array. */
+export const isLockedSecret = (secret: string) => secret.startsWith('[');
+
+export function p2pkSecret(pub: string, locktime: number, refundPub: string): string {
+  return JSON.stringify(['P2PK', { nonce: bytesToHex(crypto.getRandomValues(new Uint8Array(16))), data: pub, tags: [['locktime', String(locktime)], ['refund', refundPub]] }]);
+}
+
+/** The pubkey a locked secret pays to, plus its refund terms (null for plain secrets). */
+export function lockInfo(secret: string): { data: string; locktime: number | null; refund: string[] } | null {
+  if (!isLockedSecret(secret)) return null;
+  try {
+    const [kind, o] = JSON.parse(secret);
+    if (kind !== 'P2PK' || typeof o?.data !== 'string') return null;
+    const tags: string[][] = o.tags ?? [];
+    const lt = tags.find((t) => t[0] === 'locktime');
+    return { data: o.data, locktime: lt ? Number(lt[1]) : null, refund: tags.find((t) => t[0] === 'refund')?.slice(1) ?? [] };
+  } catch {
+    return null;
+  }
+}
+
+/** NUT-11 witness for a proof locked to this wallet's key (BIP340 signature over sha256(secret)). */
+export const witnessFor = (seedHex: string, secret: string): string =>
+  JSON.stringify({ signatures: [bytesToHex(schnorr.sign(sha256(utf8ToBytes(secret)), p2pkSk(seedHex)))] });
+
+export function blindWithSecret(keysetId: string, amount: number, secret: string): Blinded {
+  const r = scalar(crypto.getRandomValues(new Uint8Array(32)));
+  const B_ = hashToCurve(utf8ToBytes(secret)).add(Point.BASE.multiply(r)).toHex(true);
+  return { amount, secret, r: r.toString(16).padStart(64, '0'), counter: -1, msg: { id: keysetId, amount, B_ } };
+}

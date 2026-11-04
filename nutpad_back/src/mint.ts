@@ -8,6 +8,7 @@ import { schnorr } from '@noble/curves/secp256k1.js';
 import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils.js';
 import { config } from './config.js';
 import { big, type Conn, type Db } from './db.js';
+import { checkSpendingCondition } from './p2pk.js';
 import { AMOUNTS, isValidPoint, keysetFor, proofY, signBlinded, verifyProof, type Keyset } from './cashu.js';
 import { ApiError, canonical, isHex, sha256Hex } from './util.js';
 
@@ -19,6 +20,7 @@ export interface Proof {
   amount: number;
   secret: string;
   C: string;
+  witness?: unknown;
 }
 export interface BlindedMessage {
   id: string;
@@ -137,12 +139,13 @@ export class Mint {
     for (const p of inputs) {
       if (!p || typeof p.id !== 'string' || typeof p.secret !== 'string' || typeof p.C !== 'string')
         throw new ApiError(400, 'BAD_PROOF');
-      if (p.secret.length > 256) throw new ApiError(400, 'BAD_PROOF');
+      if (p.secret.length > 512) throw new ApiError(400, 'BAD_PROOF');
       const ks = this.keysets.get(p.id);
       if (!ks) throw new ApiError(400, 'UNKNOWN_KEYSET', `unknown keyset ${p.id}`);
       if (!AMOUNTS.includes(p.amount)) throw new ApiError(400, 'BAD_AMOUNT');
       if (!verifyProof(this.seed, ks.scope, p.amount, p.secret, p.C))
         throw new ApiError(400, 'INVALID_PROOF', 'proof signature invalid');
+      checkSpendingCondition(p);
       const y = proofY(p.secret);
       const ins = await c.query(
         `INSERT INTO proofs(y,keyset_id,amount,op_ref,state) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING y`,

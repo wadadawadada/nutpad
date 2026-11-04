@@ -7,8 +7,10 @@ import { useAuth } from '../lib/auth';
 import { ago, fmt } from '../lib/format';
 import {
   checkDeposits, createDeposit, dropDeposit, exportBackup, faucet, importBackup, meltQuote, pruneSpent, settleDeposit, withdraw, type DepositQuote, type MeltQuote, receiveToken, refreshKeysets, restoreFromSeed,
-  resumePending, runOp, satKeysetId, sendToken, useWallet, wipeWallet,
+  refreshSent, refundSent, resumePending, runOp, satKeysetId, sendToken, useWallet, walletP2pk, wipeWallet,
 } from '../lib/wallet';
+import { enableReceiving, fetchReceiveInfo, publishSent, receiveNutzaps, sendNutzap, type ReceiveInfo } from '../lib/nutzap';
+import { shortKey } from '../lib/format';
 import { Field, Modal, useAction, useToast } from '../components/ui';
 import { Nut, Prop } from '../components/Nut';
 import { PixelIcon } from '../components/PixelIcon';
@@ -36,6 +38,10 @@ export default function WalletPage({ onLogin }: { onLogin: () => void }) {
   const [sendAmt, setSendAmt] = useState('');
   const [token, setToken] = useState<{ str: string; qr: string; label: string } | null>(null);
   const [recv, setRecv] = useState('');
+  const [sendMode, setSendMode] = useState<'nostr' | 'bearer'>('nostr');
+  const [sendTo, setSendTo] = useState('');
+  const [sendMemo, setSendMemo] = useState('');
+  const [nz, setNz] = useState<ReceiveInfo | null | 'loading'>('loading');
   const [faucetAmt, setFaucetAmt] = useState('10000');
   const [fees, setFees] = useState<any[]>([]);
   const [backupOpen, setBackupOpen] = useState(false);
@@ -64,6 +70,23 @@ export default function WalletPage({ onLogin }: { onLogin: () => void }) {
     return () => { alive = false; clearInterval(t); };
   }, [dep]); // eslint-disable-line react-hooks/exhaustive-deps
   const ln = info?.ln;
+  const loadNz = () => (auth.pubkey ? fetchReceiveInfo(auth.pubkey).then(setNz).catch(() => setNz(null)) : undefined);
+  useEffect(() => {
+    if (!auth.pubkey) { setNz(null); return; }
+    setNz('loading');
+    void loadNz();
+    let alive = true;
+    const poll = async () => {
+      try {
+        const got = await receiveNutzaps(auth.pubkey!);
+        if (alive) for (const g of got) toast(`Received ${fmt(g.amount)} ${g.unit} over Nostr`, 'ok');
+        await refreshSent();
+      } catch { /* relays unreachable: try again next time */ }
+    };
+    void poll();
+    const t = setInterval(poll, 40_000);
+    return () => { alive = false; clearInterval(t); };
+  }, [auth.pubkey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void checkDeposits(); }, []);
   const loadFees = () => (auth.pubkey ? api('GET', '/fees/me').then((r) => setFees(r.balances)).catch(() => {}) : undefined);
   useEffect(() => { void loadFees(); }, [auth.pubkey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -87,6 +110,14 @@ export default function WalletPage({ onLogin }: { onLogin: () => void }) {
     const qr = await QRCode.toDataURL(str.length < 1800 ? str : 'token too long for QR', { margin: 1, width: 220 }).catch(() => '');
     setToken({ str, qr, label: `${fmt(sendAmt)} ${selected?.label ?? ''}` });
     setSendAmt('');
+  });
+
+  const doSendNostr = () => run(async () => {
+    const signer = await auth.getSigner();
+    await sendNutzap({ signer, keysetId: sendKs, amount: Number(sendAmt), to: sendTo, memo: sendMemo.trim() || undefined });
+    toast(`Sent ${fmt(sendAmt)} ${selected?.label ?? ''} over Nostr`, 'ok');
+    setSendAmt('');
+    setSendMemo('');
   });
 
   const goto = (t: Tab) => { setTab(t); setTimeout(() => document.getElementById('wallet-actions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30); };
@@ -216,7 +247,7 @@ export default function WalletPage({ onLogin }: { onLogin: () => void }) {
                     <div className="stat"><span className="dim">Invoice amount</span><b>{fmt(wdQuote.amount)} sats</b></div>
                     <div className="stat"><span className="dim">Fee reserve</span><b>{fmt(wdQuote.fee_reserve)} sats</b></div>
                     <div className="stat"><span className="dim">Total from wallet</span><b className="yellow">{fmt(BigInt(wdQuote.amount) + BigInt(wdQuote.fee_reserve))} sats</b></div>
-                    {satBal < Number(wdQuote.amount) + Number(wdQuote.fee_reserve) && <div className="red">Not enough sats.</div>}
+                    {!busy && satBal < Number(wdQuote.amount) + Number(wdQuote.fee_reserve) && <div className="red">Not enough sats.</div>}
                     <button className="red" disabled={busy || satBal < Number(wdQuote.amount) + Number(wdQuote.fee_reserve)} onClick={() => run(async () => {
                       const r = await withdraw(wdQuote);
                       setWdResult(r.response);
@@ -233,6 +264,10 @@ export default function WalletPage({ onLogin }: { onLogin: () => void }) {
 
             {tab === 'send' && (
               <div className="col">
+                <div className="pills">
+                  <button className={`pill ${sendMode === 'nostr' ? 'on' : ''}`} onClick={() => setSendMode('nostr')}><NostrIcon size={16} />To a Nostr address</button>
+                  <button className={`pill ${sendMode === 'bearer' ? 'on' : ''}`} onClick={() => setSendMode('bearer')}>Bearer token</button>
+                </div>
                 <div className="row">
                   <div className="grow" style={{ minWidth: 150 }}>
                     <Field label="Asset">
@@ -247,8 +282,20 @@ export default function WalletPage({ onLogin }: { onLogin: () => void }) {
                   </div>
                 </div>
                 {selected && <div className="row"><button className="ghost sm" onClick={() => setSendAmt(String(selected.bal))}>Max {fmt(selected.bal)}</button></div>}
-                <button disabled={busy || !sendKs || !sendAmt || Number(sendAmt) > (selected?.bal ?? 0)} onClick={doSend}>{busy ? 'Working…' : 'Create bearer token'}</button>
-                {token && (
+                {sendMode === 'nostr' && (
+                  <>
+                    <Field label="Recipient (npub or name@domain)"><input className="mono" placeholder="npub1… or alice@primal.net" value={sendTo} onChange={(e) => setSendTo(e.target.value.trim())} /></Field>
+                    <Field label="Message (optional)"><input maxLength={140} value={sendMemo} onChange={(e) => setSendMemo(e.target.value)} /></Field>
+                    {auth.pubkey ? (
+                      <button disabled={busy || !sendKs || !sendAmt || !sendTo || Number(sendAmt) > (selected?.bal ?? 0)} onClick={doSendNostr}>{busy ? 'Sending…' : 'Send on Nostr'}</button>
+                    ) : (
+                      <button onClick={onLogin}><NostrIcon size={18} />Log in to send</button>
+                    )}
+                    <div className="login-hint">The ecash is locked to the recipient's key (NUT-11) and published as a Nostr event. Only they can spend it. If they never claim it, you can take it back after 7 days.</div>
+                  </>
+                )}
+                {sendMode === 'bearer' && <button disabled={busy || !sendKs || !sendAmt || Number(sendAmt) > (selected?.bal ?? 0)} onClick={doSend}>{busy ? 'Working…' : 'Create bearer token'}</button>}
+                {sendMode === 'bearer' && token && (
                   <div className="px inner col">
                     <b className="green">Token ready — {token.label}</b>
                     {token.qr && <div className="qr"><img src={token.qr} alt="token QR" /></div>}
@@ -265,7 +312,21 @@ export default function WalletPage({ onLogin }: { onLogin: () => void }) {
 
             {tab === 'receive' && (
               <div className="col">
-                <div className="dim" style={{ fontSize: 13 }}>Receive a bearer token someone sent you. To receive Lightning sats, use the Deposit tab.</div>
+                <div className="px inner col">
+                  <b><NostrIcon size={16} /> Receive on Nostr</b>
+                  {!auth.pubkey ? (
+                    <><span className="dim" style={{ fontSize: 13 }}>Log in so people can send ecash to your Nostr address. It arrives locked to a key only this wallet holds.</span><button className="sm" onClick={onLogin}><NostrIcon size={18} />Nostr Login</button></>
+                  ) : nz === 'loading' ? <span className="dim">Checking…</span>
+                  : nz && nz.pubkey === walletP2pk() ? (
+                    <><span className="green">Enabled. Anyone can send to {shortKey(auth.pubkey)} and it lands here automatically.</span>
+                    <button className="ghost sm" disabled={busy} onClick={() => run(async () => { const got = await receiveNutzaps(auth.pubkey!); toast(got.length ? `Received ${got.length} transfer(s)` : 'Nothing new', got.length ? 'ok' : undefined); })}>Check now</button></>
+                  ) : (
+                    <><span className="dim" style={{ fontSize: 13 }}>{nz ? 'Your Nostr address points to a different wallet. Re-enable to receive here.' : 'Not enabled yet. One signature publishes where to send you ecash.'}</span>
+                    <button className="sm" disabled={busy} onClick={() => run(async () => { await enableReceiving(await auth.getSigner()); await loadNz(); }, 'Receiving enabled')}>{busy ? 'Waiting for your signer…' : 'Enable receiving'}</button>
+                    {busy && <span className="dim" style={{ fontSize: 13 }}>Approve the request in your signer app (sign_event 10019). Nothing shows up? Log out, log in again and allow it.</span>}</>
+                  )}
+                </div>
+                <div className="dim" style={{ fontSize: 13 }}>Or receive a bearer token someone sent you. To receive Lightning sats, use the Deposit tab.</div>
                 <Field label="Paste a cashuA token"><textarea className="mono" placeholder="cashuA…" value={recv} onChange={(e) => setRecv(e.target.value)} /></Field>
                 <button className="cyan" disabled={busy || !recv.trim()} onClick={() => run(async () => {
                   const r = await receiveToken(recv);
@@ -290,6 +351,24 @@ export default function WalletPage({ onLogin }: { onLogin: () => void }) {
         </div>
 
         <div className="col">
+          {/* ───── nostr transfers ───── */}
+          {(w.sent.length > 0 || w.received.length > 0) && (
+            <div className="px">
+              <h3>Nostr transfers</h3>
+              {w.received.slice(0, 5).map((r) => (
+                <div key={r.eventId} className="stat"><span><b className="green">+{fmt(r.amount)}</b> {r.unit} from {shortKey(r.from)}{r.memo ? ` — ${r.memo}` : ''}</span><span className="dim">{ago(new Date(r.at).toISOString())}</span></div>
+              ))}
+              {w.sent.slice(0, 5).map((s) => (
+                <div key={s.id} className="stat" style={{ flexWrap: 'wrap' }}>
+                  <span><b className="red">−{fmt(s.amount)}</b> {s.unit} to {shortKey(s.to)} · <span className={s.state === 'done' ? 'green' : 'yellow'}>{s.state === 'done' ? 'settled' : 'waiting'}</span></span>
+                  {s.state === 'open' && !s.eventId && <button className="sm" disabled={busy} onClick={() => run(async () => { await publishSent(await auth.getSigner(), s); }, 'Published')}>Publish again</button>}
+                  {s.state === 'open' && Date.now() / 1000 >= s.locktime && <button className="ghost sm" disabled={busy} onClick={() => run(async () => { const n = await refundSent(s.id); toast(`Took back ${fmt(n)} ${s.unit}`, 'ok'); })}>Take back</button>}
+                  {s.state === 'open' && Date.now() / 1000 < s.locktime && <span className="dim" style={{ fontSize: 12 }}>can be taken back on {new Date(s.locktime * 1000).toLocaleDateString()}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* ───── creator fees ───── */}
           <div className="px">
             <h3>Creator fees</h3>

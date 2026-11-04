@@ -4,7 +4,7 @@
 import { useSyncExternalStore } from 'react';
 import { api, ApiFail, API_URL, uuid } from './api';
 import {
-  deriveBlinded, newSeedHex, proofY, splitAmount, unblind,
+  blindWithSecret, deriveBlinded, isLockedSecret, newSeedHex, p2pkPub, p2pkSecret, proofY, splitAmount, unblind, witnessFor,
   type Blinded, type BlindSignature, type Proof,
 } from './cashu';
 
@@ -40,6 +40,32 @@ interface WalletData {
   proofs: Proof[];
   pending: PendingOp[];
   deposits?: DepositQuote[];
+  /** locked (P2PK) proofs that are not spendable yet and not tied to a sent record */
+  escrow?: Proof[];
+  sent?: SentNutzap[];
+  received?: ReceivedNutzap[];
+  /** ids of Nostr events already handled */
+  seen?: string[];
+}
+export interface SentNutzap {
+  id: string;
+  to: string; // recipient nostr pubkey (hex)
+  unit: string;
+  amount: number;
+  memo?: string;
+  locktime: number;
+  proofs: Proof[];
+  eventId?: string;
+  createdAt: number;
+  state: 'open' | 'done';
+}
+export interface ReceivedNutzap {
+  eventId: string;
+  from: string;
+  unit: string;
+  amount: number;
+  memo?: string;
+  at: number;
 }
 export interface KeysetMeta {
   id: string;
@@ -87,6 +113,8 @@ export function useWallet() {
     proofs: data.proofs,
     pending: data.pending,
     deposits: data.deposits ?? [],
+    sent: data.sent ?? [],
+    received: data.received ?? [],
     seed: data.seed,
     keysets: keysetMeta,
     balance: (keysetId: string) => data.proofs.filter((p) => p.id === keysetId).reduce((a, p) => a + p.amount, 0),
@@ -129,6 +157,12 @@ export function newOutputs(keysetId: string, total: number | bigint): Blinded[] 
   return out;
 }
 
+/** Outputs locked (NUT-11) to `lock.pub`; this wallet's own key can refund them after the locktime. */
+function lockedOutputs(keysetId: string, total: number | bigint, lock: { pub: string; locktime: number }): Blinded[] {
+  const refund = p2pkPub(data.seed);
+  return splitAmount(total).map((amount) => blindWithSecret(keysetId, amount, p2pkSecret(lock.pub, lock.locktime, refund)));
+}
+
 export function selectProofs(keysetId: string, amount: number): Proof[] {
   const pool = data.proofs.filter((p) => p.id === keysetId).sort((a, b) => b.amount - a.amount);
   const picked: Proof[] = [];
@@ -149,7 +183,7 @@ export interface OpSpec {
   kind: string;
   path: string;
   inputs: Proof[];
-  groups: { name: string; keysetId: string; field: string; total: number | bigint }[];
+  groups: { name: string; keysetId: string; field: string; total: number | bigint; lock?: { pub: string; locktime: number } }[];
   extra?: Record<string, unknown>;
   /** body field name that carries inputs (or null when none) */
   inputsField?: string | null;
@@ -163,7 +197,7 @@ export interface OpResult {
 export async function runOp(spec: OpSpec, keep: (groupName: string) => boolean = () => true): Promise<OpResult> {
   const groups: Group[] = spec.groups.map((g) => ({
     name: g.name, keysetId: g.keysetId, field: g.field,
-    blinded: g.total ? newOutputs(g.keysetId, g.total) : [],
+    blinded: !g.total ? [] : g.lock ? lockedOutputs(g.keysetId, g.total, g.lock) : newOutputs(g.keysetId, g.total),
   }));
   const body: Record<string, unknown> = { ...(spec.extra ?? {}) };
   if (spec.inputsField !== null) body[spec.inputsField ?? 'inputs'] = spec.inputs;
@@ -196,7 +230,7 @@ async function settle(op: PendingOp, keep: (g: string) => boolean): Promise<OpRe
   } catch (e) {
     if (e instanceof ApiFail && !e.retryable) {
       // definitive refusal: nothing was spent or issued, give the inputs back
-      data.proofs.push(...op.inputs);
+      data.proofs.push(...op.inputs.filter((p) => !isLockedSecret(p.secret)));
       data.pending = data.pending.filter((p) => p.id !== op.id);
       commit();
       await pruneSpent();
@@ -214,7 +248,11 @@ async function settle(op: PendingOp, keep: (g: string) => boolean): Promise<OpRe
     if (sigs.length !== g.blinded.length) throw new Error(`mint returned ${sigs.length} signatures for ${g.blinded.length} outputs`);
     const keys = g.blinded.length ? await keysOf(g.keysetId) : {};
     proofs[g.name] = g.blinded.map((b, i) => unblind(b, sigs[i], keys));
-    if (keep(g.name)) data.proofs.push(...proofs[g.name]);
+    if (keep(g.name)) {
+      // locked proofs are not spendable by this wallet; they wait in escrow until a sent record claims them
+      data.proofs.push(...proofs[g.name].filter((p) => !isLockedSecret(p.secret)));
+      (data.escrow ??= []).push(...proofs[g.name].filter((p) => isLockedSecret(p.secret)));
+    }
   }
   data.pending = data.pending.filter((p) => p.id !== op.id);
   commit();
@@ -423,6 +461,80 @@ export async function receiveToken(str: string): Promise<{ amount: number; unit:
     groups: [{ name: 'in', keysetId, field: 'signatures', total: sumP(proofs) }],
   });
   return { amount: sumP(proofs), unit: t.unit };
+}
+
+// ------------------------------------------------------------------ locked ecash (NUT-11) for Nostr sends
+
+export const walletP2pk = () => p2pkPub(data.seed);
+const unitOf = (keysetId: string) => keysetMeta.find((k) => k.id === keysetId)?.unit ?? 'sat';
+
+/** Swap proofs for outputs locked to `recipientPub`. Returns a sent record holding the locked proofs. */
+export async function sendLocked(keysetId: string, amount: number, to: string, recipientPub: string, locktime: number, memo?: string): Promise<SentNutzap> {
+  const inputs = selectProofs(keysetId, amount);
+  const total = sumP(inputs);
+  const r = await runOp({
+    kind: 'nostr-send', path: '/v1/swap', inputs,
+    groups: [
+      { name: 'send', keysetId, field: 'signatures', total: amount, lock: { pub: recipientPub, locktime } },
+      { name: 'change', keysetId, field: 'signatures', total: total - amount },
+    ],
+  });
+  const proofs = r.proofs.send;
+  const have = new Set(proofs.map((p) => p.secret));
+  data.escrow = (data.escrow ?? []).filter((p) => !have.has(p.secret));
+  const rec: SentNutzap = { id: uuid(), to, unit: unitOf(keysetId), amount, memo, locktime, proofs, createdAt: Date.now(), state: 'open' };
+  (data.sent ??= []).unshift(rec);
+  commit();
+  return rec;
+}
+export function markPublished(id: string, eventId: string) {
+  const r = data.sent?.find((s) => s.id === id);
+  if (r) { r.eventId = eventId; commit(); }
+}
+
+/** Spend locked proofs that pay to this wallet's key (received nutzaps, or our own after the locktime). */
+export async function redeemLocked(proofs: Proof[]): Promise<number> {
+  const byKs = new Map<string, Proof[]>();
+  for (const p of proofs) byKs.set(p.id, [...(byKs.get(p.id) ?? []), p]);
+  let got = 0;
+  for (const [keysetId, ps] of byKs) {
+    const inputs = ps.map((p) => ({ ...p, witness: witnessFor(data.seed, p.secret) }));
+    await runOp({ kind: 'nostr-redeem', path: '/v1/swap', inputs, groups: [{ name: 'in', keysetId, field: 'signatures', total: sumP(ps) }] });
+    got += sumP(ps);
+  }
+  return got;
+}
+
+/** Refund a sent record whose recipient never claimed it (only works after its locktime). */
+export async function refundSent(id: string): Promise<number> {
+  const rec = data.sent?.find((s) => s.id === id);
+  if (!rec) throw new Error('unknown record');
+  if (Date.now() / 1000 < rec.locktime) throw new Error(`Locked until ${new Date(rec.locktime * 1000).toLocaleString()}`);
+  const got = await redeemLocked(rec.proofs);
+  rec.state = 'done';
+  commit();
+  return got;
+}
+
+/** Mark sent records whose proofs the mint reports as spent (claimed by the recipient or refunded). */
+export async function refreshSent(): Promise<void> {
+  for (const rec of data.sent ?? []) {
+    if (rec.state === 'done') continue;
+    const r = await api<{ states: { state: string }[] }>('POST', '/v1/checkstate', { Ys: rec.proofs.map((p) => proofY(p.secret)) }).catch(() => null);
+    if (r && r.states.length && r.states.every((s) => s.state === 'SPENT')) rec.state = 'done';
+  }
+  commit();
+}
+
+export function rememberReceived(r: ReceivedNutzap) {
+  (data.received ??= []).unshift(r);
+  data.received = data.received.slice(0, 100);
+  commit();
+}
+export const isSeen = (eventId: string) => !!data.seen?.includes(eventId);
+export function markSeen(eventId: string) {
+  data.seen = [...(data.seen ?? []), eventId].slice(-500);
+  commit();
 }
 
 // ------------------------------------------------------------------ restore / backup

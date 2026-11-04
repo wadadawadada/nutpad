@@ -117,7 +117,7 @@ export function createApp(mint: Mint) {
     pubkey: mint.nostrPk,
     version: 'nutpad/0.1',
     description: 'Cashu-native launchpad mint. Custom per-asset units; trade settlement is a nutpad extension.',
-    nuts: { '2': { supported: true }, '3': { supported: true }, '4': { supported: !!mint.ln, methods: [{ method: 'bolt11', unit: 'sat' }] }, '5': { supported: !!mint.ln, methods: [{ method: 'bolt11', unit: 'sat' }] }, '7': { supported: true }, '9': { supported: true } },
+    nuts: { '2': { supported: true }, '3': { supported: true }, '4': { supported: !!mint.ln, methods: [{ method: 'bolt11', unit: 'sat' }] }, '5': { supported: !!mint.ln, methods: [{ method: 'bolt11', unit: 'sat' }] }, '7': { supported: true }, '9': { supported: true }, '10': { supported: true }, '11': { supported: true } },
     demo_faucet: config.demoFaucet,
     demo_mode: config.demoMode,
     ln: { enabled: !!mint.ln, backend: mint.ln?.name ?? 'none', network: mint.ln?.network ?? null, max_sats: config.ln.maxSats.toString() },

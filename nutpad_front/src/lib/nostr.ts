@@ -55,7 +55,7 @@ function wrapBunker(bs: BunkerSigner, pubkey: string): Signer {
         return (await bs.signEvent(t)) as Event;
       } catch (e) {
         if (/timeout/i.test(String(e)))
-          throw new Error(`Remote signer did not answer. Open your signer app and approve "sign_event kind ${t.kind}" (grant it permission to sign this kind), then retry.`);
+          throw new Error(`Remote signer did not answer. Open your signer app and approve "sign_event kind ${t.kind}". If no request ever appears, log out and log in again so the signer can grant this permission, then retry.`);
         throw e;
       }
     },
@@ -87,12 +87,13 @@ export function startNostrConnect(relays = DEFAULT_RELAYS) {
     secret,
     name: 'nutpad',
     url: window.location.origin,
-    perms: ['sign_event:27235', 'sign_event:30078', 'sign_event:1'],
+    perms: ['sign_event:27235', 'sign_event:30078', 'sign_event:1', 'sign_event:10019', 'sign_event:9321'],
   });
   const abort = new AbortController();
   const done = BunkerSigner.fromURI(clientSk, uri, {}, abort.signal).then(async (bs) => {
     const pubkey = await bs.getPublicKey();
-    return { signer: wrapBunker(bs, pubkey), clientSk: bytesToHex(clientSk), pointer: { pubkey, relays, secret: null } };
+    // keep the pointer the library actually talks to (the remote signer's key), so the session can be rebuilt after a reload
+    return { signer: wrapBunker(bs, pubkey), clientSk: bytesToHex(clientSk), pointer: { ...bs.bp, relays: bs.bp.relays?.length ? bs.bp.relays : relays, secret: null } };
   });
   return { uri, done, cancel: () => abort.abort() };
 }
@@ -147,8 +148,13 @@ export async function signerFromStored(s: Stored): Promise<Signer> {
   if (s.kind === 'burner' && s.burnerSk) return burnerSigner(s.burnerSk);
   if (s.kind === 'nip07') return nip07Signer();
   if (s.kind === 'bunker' && liveBunker && liveBunker.pubkey === s.pubkey) return liveBunker;
+  if (s.kind === 'bunker' && s.bunker) {
+    // the page was reloaded: reopen the NIP-46 channel with the stored client key (the signer already trusts it)
+    const bs = BunkerSigner.fromBunker(hexToBytes(s.bunker.clientSk), s.bunker.pointer, { timeout: 120_000, onauth: (url) => window.open(url, '_blank', 'noopener,width=480,height=720') });
+    return wrapBunker(bs, s.pubkey);
+  }
   if (s.kind === 'bunker')
-    throw new Error('Remote signer connection was lost (page reload). Click Logout, log in with your signer again, then launch without reloading.');
+    throw new Error('Remote signer connection was lost. Click Logout and log in with your signer again.');
   throw new Error('Cannot restore signer, please log in again');
 }
 

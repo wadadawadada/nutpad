@@ -10,7 +10,10 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { finalizeEvent, getPublicKey, generateSecretKey } from 'nostr-tools/pure';
-import { blindOutputs, unblind } from './helpers.js';
+import { schnorr } from '@noble/curves/secp256k1.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { utf8ToBytes } from '@noble/hashes/utils.js';
+import { blindOutputs, blindWithSecret, unblind } from './helpers.js';
 
 const { openDb } = await import('../src/db.js');
 const { Mint } = await import('../src/mint.js');
@@ -291,4 +294,36 @@ test('audit: checkpoint verifies by independent replay, solvency is conserved', 
   const evs2 = ev.events.map((e: any, i: number) => (i === 1 ? { ...e, payload: canonical(forged) } : e));
   const st2 = emptyState();
   assert.throws(() => evs2.forEach((e: any) => applyEvent(st2, { seq: e.seq, type: e.type, payload: JSON.parse(e.payload) })));
+});
+
+test('NUT-11 P2PK: locked proofs need the right signature; refund key works only after locktime', async () => {
+  const skA = generateSecretKey(), skB = generateSecretKey(), skC = generateSecretKey();
+  const pub = (sk: Uint8Array) => '02' + bytesToHex(schnorr.getPublicKey(sk));
+  const sign = (secret: string, sk: Uint8Array) => ({ signatures: [bytesToHex(schnorr.sign(sha256(utf8ToBytes(secret)), sk))] });
+  const lockTo = async (locktime: number) => {
+    const secret = JSON.stringify(['P2PK', { nonce: bytesToHex(randomBytes(16)), data: pub(skA), tags: [['locktime', String(locktime)], ['refund', pub(skB)]] }]);
+    const funds = await faucet(4n);
+    const out = blindWithSecret(satKs, 4, secret);
+    const r = await api('POST', '/v1/swap', { inputs: funds, outputs: [out.msg] }, { key: randomUUID() });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    return unblind([out], r.body.signatures, await keysOf(satKs))[0];
+  };
+  const spend = async (proof: any, witness?: unknown) => {
+    const o = blindOutputs(satKs, 4n);
+    return api('POST', '/v1/swap', { inputs: [witness ? { ...proof, witness } : proof], outputs: o.map((x) => x.msg) }, { key: randomUUID() });
+  };
+  const info = await api('GET', '/v1/info');
+  assert.ok(info.body.nuts['11'].supported);
+
+  const future = Math.floor(Date.now() / 1000) + 3600;
+  const locked = await lockTo(future);
+  assert.equal((await spend(locked)).body.error.code, 'P2PK_LOCKED', 'no witness');
+  assert.equal((await spend(locked, sign(locked.secret, skC))).body.error.code, 'P2PK_LOCKED', 'wrong key');
+  assert.equal((await spend(locked, sign(locked.secret, skB))).body.error.code, 'P2PK_LOCKED', 'refund key before locktime');
+  assert.equal((await spend(locked, sign(locked.secret, skA))).status, 200, 'owner key');
+  assert.equal((await spend(locked, sign(locked.secret, skA))).status, 400, 'cannot be spent twice');
+
+  const expired = await lockTo(Math.floor(Date.now() / 1000) - 10);
+  assert.equal((await spend(expired, sign(expired.secret, skC))).body.error.code, 'P2PK_LOCKED', 'stranger after locktime');
+  assert.equal((await spend(expired, sign(expired.secret, skB))).status, 200, 'refund key after locktime');
 });

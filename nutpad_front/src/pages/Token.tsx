@@ -52,7 +52,8 @@ function TradePanel({ asset, onDone }: { asset: AssetView; onDone: () => void })
       onDone();
     });
 
-  const insufficient = side === 'BUY' ? quote && Number(quote.total) > sats : /^\d+$/.test(amount) && Number(amount) > held;
+  // not while a trade is in flight: the wallet spends its proofs before the response arrives, so the balance dips below the amount
+  const insufficient = !busy && (side === 'BUY' ? quote && Number(quote.total) > sats : /^\d+$/.test(amount) && Number(amount) > held);
   const avg = quote && Number(quote.delta || amount) > 0 ? (Number(quote.gross) / Number(side === 'BUY' ? quote.delta : amount)) : null;
 
   return (

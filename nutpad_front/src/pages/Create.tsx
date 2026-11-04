@@ -181,7 +181,7 @@ export default function Create({ onLogin }: { onLogin: () => void }) {
           {step && <p className="yellow">{step}</p>}
           <label style={{ marginTop: 10 }}><input type="checkbox" style={{ width: 'auto' }} checked={post} onChange={(e) => setPost(e.target.checked)} /> Also publish a Nostr post (needs a 2nd approval)</label>
           {post && /localhost|127\.0\.0\.1/.test(API_URL) && <p className="dim" style={{ fontSize: 13 }}>Heads up: the post links to localhost, so other people can only open it after the app is deployed.</p>}
-          {have < need && <p className="red">Not enough sats — use the faucet in the Wallet tab.</p>}
+          {!busy && have < need && <p className="red">Not enough sats — use the faucet in the Wallet tab.</p>}
         </div>
         <div className="px">
           <h3>What happens</h3>
