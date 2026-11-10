@@ -4,7 +4,7 @@
 // event with the same deterministic rules the server uses, and join the result with the creators' signed
 // manifests (a manifest belongs to a token when sha256(content) equals the LAUNCH event's manifest_hash).
 import { SimplePool } from 'nostr-tools/pool';
-import { DEFAULT_RELAYS } from './nostr';
+import { DATA_RELAYS } from './nostr';
 import { applyEvent, emptyState } from './replay';
 import { spotPriceNano } from './curve';
 import { sha256Hex } from './util';
@@ -42,7 +42,7 @@ export const knownMintPk = (): string | null => {
 };
 export const rememberMintPk = (pk: string) => { try { localStorage.setItem(MINT_PK_KEY, pk); } catch { /* ignore */ } };
 
-export async function loadFromRelays(mintPk: string, relays: string[] = DEFAULT_RELAYS): Promise<RelayView> {
+export async function loadFromRelays(mintPk: string, relays: string[] = DATA_RELAYS): Promise<RelayView> {
   const segs = await pool.querySync(relays, { kinds: [30078], authors: [mintPk], '#t': ['nutpad-log'] }, { maxWait: 9000 });
   // newest version of each segment
   const newest = new Map<string, (typeof segs)[number]>();

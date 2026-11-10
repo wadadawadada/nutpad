@@ -14,7 +14,7 @@ export const config = {
   frontendOrigins: (env.FRONTEND_ORIGIN ?? '*').split(',').map((s) => s.trim()).filter(Boolean),
   /** Public base URL of this API (used for NIP-98 `u` tag). Derived from the request if empty. */
   apiPublicUrl: (env.API_PUBLIC_URL ?? '').replace(/\/$/, ''),
-  relays: (env.NOSTR_RELAYS ?? (env.NODE_ENV === 'production' ? '' : 'wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net')).split(',').map((s) => s.trim()).filter(Boolean),
+  relays: (env.NOSTR_RELAYS ?? (env.NODE_ENV === 'production' ? '' : 'wss://relay.primal.net,wss://relay.snort.social,wss://offchain.pub,wss://nostr.bitcoiner.social,wss://nostr.oxtr.dev,wss://relay.damus.io,wss://nos.lol')).split(',').map((s) => s.trim()).filter(Boolean),
   /** Demo faucet: mints sat ecash out of thin air. NEVER enable with real funds. */
   demoFaucet: bool(env.DEMO_FAUCET, env.NODE_ENV !== 'production' && !['lnbits', 'nwc', 'cashu'].includes(env.LN_BACKEND ?? 'none')),
   /** Enables short (2 min) vault durations for testing. */

@@ -36,12 +36,12 @@ cd nutpad_front && npx tsx scripts/smoke.ts      # browser-wallet logic against 
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}`
    - `MINT_SEED` = output of `openssl rand -hex 32` — **back it up**; it derives every keyset key
    - `FRONTEND_ORIGIN` = the front's public URL (after step 3)
-   - `NOSTR_RELAYS` = `wss://relay.damus.io,wss://nos.lol,wss://relay.primal.net`
+   - `NOSTR_RELAYS` = `wss://relay.primal.net,wss://relay.snort.social,wss://offchain.pub,wss://nostr.bitcoiner.social,wss://nostr.oxtr.dev,wss://relay.damus.io,wss://nos.lol` (damus and nos.lol accept app-specific events but do not serve them back; keep relays that do, checked on 2026-11-10)
    - `DEMO_FAUCET=true` only for a demo (see limitations)
    - `NODE_ENV=production`
-   Generate a public domain.
+   Generate a public domain. With `NOSTR_RELAYS` set, the worker also publishes the audit log to those relays (see *Public log on Nostr*).
 3. Add service **nutpad-front**, *Root Directory* `nutpad_front`. Variable `VITE_API_URL` = the back's public URL
-   (**build-time**, set before deploying). Generate a domain, then put it into the back's `FRONTEND_ORIGIN`.
+   (**build-time**, set before deploying). Optional `VITE_MINT_PUBKEY` = the mint's Nostr key (`GET <back>/v1/info` → `pubkey`) so a first-time visitor can rebuild the token list from relays when the API is down; `VITE_CASHU_NPUB` = the Cashu account tagged in launch posts. Generate a domain, then put it into the back's `FRONTEND_ORIGIN`.
 4. Check `GET <back>/health`, then run `npm run verify -- <back url>`.
 
 ## Lightning (testnet) — real deposits and withdrawals
@@ -107,10 +107,22 @@ flow against an in-process simulator (`LN_BACKEND=fake`). Run one real testnet r
 - Creator fee split and idempotent fee claims; voluntary 7/30/90-day vault with beneficiary commitment, one-time recoverable claim.
 - RFC 6962 Merkle log, signed checkpoints (Nostr events), inclusion/consistency proofs, state root, independent verifier CLI, "warning only" statuses, solvency page.
 - Wallet: seed in the browser, crash-safe pending operations, send/receive bearer tokens, encrypted backup, restore from seed.
+- **Buyback & burn:** the platform's 0.7% fee share buys the same token on the curve and burns it, in the same DB transaction as the trade (`BUYBACK` audit event; sats that do not buy a whole unit carry to the next trade). Burned supply is shown per token. The 1,000 sat launch fee is a separate dev fund (no withdrawal path yet).
+- **Ecash over Nostr:** send sats or any token to an npub / name@domain. Proofs are locked to the receiver's wallet key (Cashu NUT-10/11 P2PK, BIP340 signatures, locktime + refund key) and published as a NIP-61 nutzap (kind 9321); the receiver publishes a kind 10019 event once and then claims automatically. Unclaimed transfers can be taken back after 7 days. The mint checks spending conditions in `spendInputs` (`nutpad_back/src/p2pk.ts`); single-pubkey `SIG_INPUTS` only, no multisig/HTLC.
+
+## Public log on Nostr
+
+The mint publishes its whole audit log to the relays in `NOSTR_RELAYS`, so state can be rebuilt and verified without our server:
+
+- The log is cut into segments of 40 events. Segment *k* is a parameterized replaceable event (kind 30078, `d=nutpad-log-k`, `t=nutpad-log`) signed by the mint key. Content is one line per audit event, `seq|type|canonical payload`, i.e. exactly the Merkle leaf data. An open segment is re-published as it grows; closed ones once. Delivery uses the durable outbox, runs in the background worker and never blocks a trade (`nutpad_back/src/logpub.ts`).
+- Anyone can fetch the segments, check the signatures, recompute the leaf hashes, the log root and the state root, and compare them with the signed checkpoints. `nutpad_front/src/lib/replay.ts` is the same deterministic replay the server and the verifier use.
+- Token discovery: a manifest (creator-signed kind 30078, `t=nutpad-manifest`) belongs to a token when `sha256(content)` equals the `LAUNCH` event's `manifest_hash`. When the API is unreachable, Explore rebuilds the token list (supply, burned, volume, trades, name, ticker) from relays this way (`nutpad_front/src/lib/relaylog.ts`). Trading and token pages still need the API.
+- Not decentralized: the mint is still a single custodian (spent-proof set, keys, reserves). The log makes its behaviour independently checkable and its history recoverable; it does not remove the trust in the operator.
 
 ## Known limits (read before real money)
 
 - **Backing depends on your node.** Without `LN_BACKEND` the sats come from the demo faucet (unbacked, `UNVERIFIED`). With LNbits on testnet, deposits/withdrawals are real testnet payments. Mainnet is disabled.
+- Nostr transfers only work between nutpad wallets on this mint (custom units); interoperability with other NIP-60/61 wallets is untested. Relay delivery of the log was checked against the public relays listed above, not against every relay's size limits.
 - Custom units only work in this mint's wallet; tokens use `cashuA` (V3 JSON), not V4 CBOR. Seed derivation is HMAC based, not NUT-13 byte-compatible.
 - Not built: Nostr incident reports/challenges, manual emergency pause, key rotation, KMS/HSM. Mint seed lives in an env var.
 - Primal/NIP-46 is implemented through standard `bunker://` and `nostrconnect://`; not tested against a real Primal build.

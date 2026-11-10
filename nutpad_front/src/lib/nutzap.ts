@@ -9,7 +9,7 @@ import { nip19 } from 'nostr-tools';
 import type { Event } from 'nostr-tools';
 import { API_URL } from './api';
 import { lockInfo, type Proof } from './cashu';
-import { DEFAULT_RELAYS, type Signer } from './nostr';
+import { DATA_RELAYS as DEFAULT_RELAYS, type Signer } from './nostr';
 import {
   isSeen, markPublished, markSeen, redeemLocked, rememberReceived, sendLocked, walletP2pk, type SentNutzap,
 } from './wallet';

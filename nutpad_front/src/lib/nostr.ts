@@ -24,6 +24,8 @@ interface Stored {
 }
 
 export const DEFAULT_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net'];
+/** Relays that accept AND serve app-specific events (kind 30078, 9321, 10019). damus and nos.lol answer OK but do not serve them back. */
+export const DATA_RELAYS = ['wss://relay.primal.net', 'wss://relay.snort.social', 'wss://offchain.pub', 'wss://nostr.bitcoiner.social', 'wss://nostr.oxtr.dev', 'wss://relay.damus.io', 'wss://nos.lol'];
 
 export const hasNip07 = () => typeof window !== 'undefined' && !!(window as any).nostr;
 
