@@ -26,6 +26,7 @@ await db.tx(async (c) => {
   await c.query(`DELETE FROM keysets WHERE asset_id IS NOT NULL`);
   await c.query(`UPDATE platform_ledger SET fees_sats=0 WHERE id=1`);
   await c.query(`UPDATE audit_head SET size=0 WHERE id=1`);
+  await c.query(`DELETE FROM meta WHERE key='log_enq_seq'`);
   await c.query(
     `INSERT INTO meta(key,value) VALUES('ledger_written_off',$1)
      ON CONFLICT (key) DO UPDATE SET value=(meta.value::bigint + $1::bigint)::text`,

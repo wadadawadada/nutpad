@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 import { useAuth } from './lib/auth';
 import { useProfileName } from './lib/profile';
+import { rememberMintPk } from './lib/relaylog';
 import { api } from './lib/api';
 import { checkDeposits, refreshKeysets, resumePending, satKeysetId, useWallet } from './lib/wallet';
 import { errMsg, fmt, shortKey } from './lib/format';
@@ -30,7 +31,7 @@ export default function App() {
   const toast = useToast();
 
   useEffect(() => {
-    api('GET', '/v1/info').then(setInfo).catch((e) => toast('API unreachable: ' + errMsg(e), 'err'));
+    api('GET', '/v1/info').then((i: any) => { setInfo(i); if (i?.pubkey) rememberMintPk(i.pubkey); }).catch((e) => toast('API unreachable: ' + errMsg(e), 'err'));
     refreshKeysets().then(satKeysetId).then(setSat).then(resumePending).catch(() => {});
     const t = setInterval(() => { void resumePending(); void checkDeposits(); }, 15000);
     void checkDeposits();

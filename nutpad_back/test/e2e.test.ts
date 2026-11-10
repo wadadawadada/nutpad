@@ -121,7 +121,7 @@ test('launch: 1000 fee + first buy of 2.1M units, idempotent retry', async () =>
   assert.equal(quote.body.first_buy.total, '12009');
   assetId = quote.body.asset_id;
   assetKs = quote.body.keyset_id;
-  const event = finalizeEvent({ kind: 30078, created_at: Math.floor(Date.now() / 1000), tags: [['d', manifest.nonce]], content: quote.body.content }, creatorSk);
+  const event = finalizeEvent({ kind: 30078, created_at: Math.floor(Date.now() / 1000), tags: [['d', manifest.nonce], ['t', 'nutpad-manifest']], content: quote.body.content }, creatorSk);
 
   const funds = await faucet(14_000n);
   const outTok = blindOutputs(assetKs, 2_100_000n);
@@ -326,4 +326,67 @@ test('NUT-11 P2PK: locked proofs need the right signature; refund key works only
   const expired = await lockTo(Math.floor(Date.now() / 1000) - 10);
   assert.equal((await spend(expired, sign(expired.secret, skC))).body.error.code, 'P2PK_LOCKED', 'stranger after locktime');
   assert.equal((await spend(expired, sign(expired.secret, skB))).status, 200, 'refund key after locktime');
+});
+
+test('audit log segments on Nostr rebuild the exact Merkle root and state', async () => {
+  const { enqueueLogSegments, SEGMENT } = await import('../src/logpub.js');
+  const { leafHash, mth } = await import('../src/merkle.js');
+  const { verifyEvent } = await import('nostr-tools/pure');
+  const n = await enqueueLogSegments(mint);
+  assert.ok(n >= 1);
+  assert.equal(await enqueueLogSegments(mint), 0, 'nothing new, nothing queued');
+  const rows = (await mint.db.query<any>(`SELECT payload FROM outbox WHERE kind='log' ORDER BY id`)).rows;
+  // newest version per segment (d tag)
+  const bySeg = new Map<string, any>();
+  for (const r of rows) { const ev = r.payload; bySeg.set(ev.tags.find((t: string[]) => t[0] === 'd')[1], ev); }
+  const lines: string[] = [];
+  for (const ev of [...bySeg.values()].sort((a, b) => Number(a.tags.find((t: string[]) => t[0] === 'from')[1]) - Number(b.tags.find((t: string[]) => t[0] === 'from')[1]))) {
+    assert.ok(verifyEvent(ev), 'segment is a valid signed event');
+    assert.equal(ev.pubkey, mint.nostrPk, 'signed by the mint key');
+    if (ev.content) lines.push(...ev.content.split('\n'));
+  }
+  const head = Number((await mint.db.query<any>(`SELECT size FROM audit_head WHERE id=1`)).rows[0].size);
+  assert.equal(lines.length, head, 'every audit event is published');
+  assert.ok(head > SEGMENT || bySeg.size >= 1);
+  const root = mth(lines.map((l) => leafHash(new TextEncoder().encode(l))));
+  const db = (await mint.db.query<any>(`SELECT leaf_hash FROM audit_events ORDER BY seq`)).rows.map((r) => r.leaf_hash);
+  assert.equal(root, mth(db), 'relay copy reproduces the Merkle root');
+  // and the published events replay to the same state root as the database
+  const st = emptyState();
+  for (const l of lines) { const [seq, type, ...rest] = l.split('|'); applyEvent(st, { seq: Number(seq), type, payload: JSON.parse(rest.join('|')) }); }
+  const { dbState, dbStateRoot } = await import('../src/audit.js');
+  assert.equal(stateRoot(st), dbStateRoot(await dbState(mint.db as any)));
+});
+
+test('a browser can rebuild the token list from relays alone (mock relay, no API)', async () => {
+  const { WebSocketServer } = await import('ws');
+  const events = (await mint.db.query<any>(`SELECT kind,payload FROM outbox WHERE kind IN ('log','manifest') ORDER BY id`)).rows.map((r) => r.payload);
+  const wss = new WebSocketServer({ port: 0 });
+  wss.on('connection', (ws) => ws.on('message', (raw) => {
+    const m = JSON.parse(raw.toString());
+    if (m[0] !== 'REQ') return;
+    for (const f of m.slice(2)) {
+      for (const ev of events) {
+        if (f.kinds && !f.kinds.includes(ev.kind)) continue;
+        if (f.authors && !f.authors.includes(ev.pubkey)) continue;
+        if (f['#t'] && !ev.tags.some((t: string[]) => t[0] === 't' && f['#t'].includes(t[1]))) continue;
+        ws.send(JSON.stringify(['EVENT', m[1], ev]));
+      }
+    }
+    ws.send(JSON.stringify(['EOSE', m[1]]));
+  }));
+  const port = (wss.address() as AddressInfo).port;
+  const { loadFromRelays } = await import('../../nutpad_front/src/lib/relaylog.ts');
+  const view = await loadFromRelays(mint.nostrPk, [`ws://127.0.0.1:${port}`]);
+  wss.close();
+  const api_ = (await api('GET', '/assets')).body.assets;
+  assert.equal(view.complete, true);
+  assert.equal(view.tokens.length, api_.length);
+  for (const t of view.tokens) {
+    const a = api_.find((x: any) => x.asset_id === t.asset_id);
+    assert.equal(t.supply, a.supply, 'supply replayed from relays matches the API');
+    assert.equal(t.burned_supply, a.burned_supply);
+    assert.equal(t.name, a.name, 'name comes from the creator-signed manifest');
+    assert.equal(t.ticker, a.ticker);
+  }
 });

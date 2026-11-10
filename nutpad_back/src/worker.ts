@@ -5,6 +5,7 @@ import { big } from './db.js';
 import { createCheckpoint } from './audit.js';
 import type { Mint } from './mint.js';
 import { reconcileAll } from './lightning.js';
+import { enqueueLogSegments } from './logpub.js';
 
 function publishTo(relay: string, event: { id: string }, timeoutMs = 8000): Promise<boolean> {
   return new Promise((resolve) => {
@@ -80,6 +81,7 @@ export function startWorker(mint: Mint): () => void {
     try {
       await createCheckpoint(mint);
       await reconcileAll(mint);
+      await enqueueLogSegments(mint);
       await deliverOutbox(mint);
     } catch (e) {
       console.error('[worker]', e);
