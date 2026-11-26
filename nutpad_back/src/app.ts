@@ -203,7 +203,11 @@ export function createApp(mint: Mint) {
   app.get('/assets', h(async (req) => {
     const sort = String(req.query.sort ?? 'new');
     const order = sort === 'volume' ? 'volume_sats DESC' : sort === 'momentum' ? 'trade_count DESC' : 'created_at DESC';
-    const r = await db.query(`SELECT ${ASSET_COLS} FROM assets ORDER BY ${order} LIMIT 100`);
+    const creator = typeof req.query.creator === 'string' ? req.query.creator.toLowerCase() : null;
+    if (creator !== null && !isHex(creator, 64)) throw new ApiError(400, 'BAD_PARAM', 'creator');
+    const r = creator
+      ? await db.query(`SELECT ${ASSET_COLS} FROM assets WHERE creator_pubkey=$1 ORDER BY ${order} LIMIT 100`, [creator])
+      : await db.query(`SELECT ${ASSET_COLS} FROM assets ORDER BY ${order} LIMIT 100`);
     return { assets: r.rows.map(publicAsset) };
   }));
 

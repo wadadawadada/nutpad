@@ -165,7 +165,7 @@ export default function Token({ onLogin }: { onLogin: () => void }) {
             <p className="t-desc">{a.description || <span className="dim">No description</span>}</p>
             <div className="t-meta">
               <div className="seg">
-                <span className="seg-label" title={npub}><PixelIcon name="user" size={13} />{creatorName ?? shortKey(a.creator_pubkey)}</span>
+                <Link className="seg-label" to={`/creator/${npub}`} title="See all tokens by this creator"><PixelIcon name="user" size={13} />{creatorName ?? shortKey(a.creator_pubkey)}</Link>
                 <button className="seg-btn" onClick={() => copy(npub, 'Creator npub copied')} title="Copy creator npub" aria-label="Copy creator npub"><PixelIcon name="copy" size={13} /></button>
                 <a className="seg-btn" href={`https://primal.net/p/${npub}`} target="_blank" rel="noopener noreferrer" title="Open the creator's profile on Primal"><NostrIcon size={14} />Nostr ↗</a>
               </div>

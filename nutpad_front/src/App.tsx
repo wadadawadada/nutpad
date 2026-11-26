@@ -15,6 +15,7 @@ import Banner from './components/Banner';
 import { NutImg } from './components/Nut';
 import Home from './pages/Home';
 import Explore from './pages/Explore';
+import Creator from './pages/Creator';
 import Token from './pages/Token';
 import Create from './pages/Create';
 import WalletPage from './pages/Wallet';
@@ -73,6 +74,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/explore" element={<Explore />} />
+          <Route path="/creator/:id" element={<Creator />} />
           <Route path="/token/:id" element={<Token onLogin={() => setLogin(true)} />} />
           <Route path="/create" element={<Create onLogin={() => setLogin(true)} />} />
           <Route path="/wallet" element={<WalletPage onLogin={() => setLogin(true)} />} />

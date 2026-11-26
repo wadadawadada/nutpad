@@ -390,3 +390,10 @@ test('a browser can rebuild the token list from relays alone (mock relay, no API
     assert.equal(t.ticker, a.ticker);
   }
 });
+
+test('assets can be filtered by creator', async () => {
+  const mine = (await api('GET', `/assets?creator=${creatorPk}`)).body.assets;
+  assert.ok(mine.length >= 1 && mine.every((a: any) => a.creator_pubkey === creatorPk));
+  assert.equal((await api('GET', `/assets?creator=${'ab'.repeat(32)}`)).body.assets.length, 0);
+  assert.equal((await api('GET', '/assets?creator=zz')).status, 400);
+});
