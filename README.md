@@ -1,5 +1,7 @@
 # nutpad — Cashu-native launchpad
 
+> **Experimental, testnet only.** The mint is still a **single custodian**: you trust the operator with the keys, the spent-proof set and the reserves. The public log makes its behaviour checkable, it does not make it trustless. **Mainnet is disabled** (signet/testnet sats only, no real money). Not security-audited. See [Known limits](#known-limits-read-before-real-money).
+
 Monorepo, two deployable services (plus Postgres) on Railway:
 
 | Folder | What | Stack |
@@ -121,6 +123,10 @@ The mint publishes its whole audit log to the relays in `NOSTR_RELAYS`, so state
 
 ## Known limits (read before real money)
 
+- **Single custodian.** One mint, one operator: it holds the signing keys, the spent-proof set and all reserves, and could in theory freeze, censor or steal. The Merkle log, signed checkpoints and the relay copy let anyone detect misbehaviour and rebuild history, but cannot prevent it or recover funds.
+- **Mainnet is disabled.** Only testnet/signet/regtest Lightning is accepted. It is a guard, not a hard lock: the server refuses to start on mainnet unless `ALLOW_MAINNET=true` is set, and this build is not meant to be run that way. Tokens and sats have no real value.
+- **No dev-fund withdrawal yet.** The launch fees (dev fund) are only accounted for, there is no payout function.
+- **Wallet is browser-local.** Ecash, the seed and counters live only in the browser's storage; nothing is stored on the server or on Nostr and there is no automatic sync between devices. Clearing site data without a saved seed or exported backup loses funds. Moving or restoring by hand: reveal/restore the seed in Wallet (recovers only proofs the mint signed for that seed) or export/import the encrypted backup (needed for tokens received from elsewhere).
 - **Backing depends on your node.** Without `LN_BACKEND` the sats come from the demo faucet (unbacked, `UNVERIFIED`). With LNbits on testnet, deposits/withdrawals are real testnet payments. Mainnet is disabled.
 - Nostr transfers only work between nutpad wallets on this mint (custom units); interoperability with other NIP-60/61 wallets is untested. Relay delivery of the log was checked against the public relays listed above, not against every relay's size limits.
 - Custom units only work in this mint's wallet; tokens use `cashuA` (V3 JSON), not V4 CBOR. Seed derivation is HMAC based, not NUT-13 byte-compatible.
