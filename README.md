@@ -130,3 +130,7 @@ The mint publishes its whole audit log to the relays in `NOSTR_RELAYS`, so state
 - The Postgres (`pg`) path is exercised only through PGlite locally (same SQL); verify on Railway after deploy.
 - Merkle/state computations load the whole log (fine for MVP, needs incremental trees at scale).
 - Needs an independent security review before any real use (spec phase 5).
+
+## License
+
+[MIT](LICENSE). Testnet software, provided as is, without warranty; not financial advice.
